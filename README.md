@@ -2,6 +2,27 @@
 
 Monorepo cho QOL — ứng dụng hướng dẫn tham quan bằng âm thanh đa ngôn ngữ. Nền tảng hiện được tổ chức cho React + TypeScript, ASP.NET Core và Microsoft SQL Server.
 
+## Chạy từ đầu (Development)
+
+Cần Docker Desktop và Node.js 20.19+ hoặc 22.12+. Từ thư mục gốc, mở hai cửa sổ PowerShell. Sao chép `.env.example` thành `.env` rồi thay các mật khẩu mẫu trước khi chạy.
+
+**Cửa sổ 1 — SQL Server và API:**
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+**Cửa sổ 2 — web:**
+
+```powershell
+Set-Location frontend
+npm.cmd ci
+npm.cmd run dev --workspace @qol/user-web
+```
+
+Mở `http://localhost:5173/explore`. API trong Compose chạy ở `http://localhost:8080`. Khi API chạy ở môi trường `Development`, hệ thống tự tạo ba địa điểm, một file WAV mẫu tự sinh và tài khoản người dùng demo. Đăng nhập bằng `demo@qol.local` / `QolDemo!2026`. Tài khoản và mật khẩu mẫu chỉ dành cho dữ liệu phát triển; không dùng ở môi trường thật.
+
 ## Cấu trúc
 
 - `frontend/user-web/`: ứng dụng web người dùng và trang quản trị tại `/admin`; mã React nằm trong `src/`.
@@ -26,19 +47,19 @@ Monorepo cho QOL — ứng dụng hướng dẫn tham quan bằng âm thanh đa 
 ### Cấu trúc dữ liệu và quy tắc thay đổi
 
 - `QolDbContext` và các cấu hình entity trong `backend/QOL.Infrastructure/Persistence/Configurations/` mô tả schema mà API hiện sử dụng.
-- Database hiện có các bảng nghiệp vụ `Users`, `Locations`, `Languages`, `AudioFiles`, `Favorites`, `ListeningHistory`, `LocationReviews`, `SubscriptionPlans` và `SubscriptionOrders`; sáu EF migrations hiện hành được quản lý tại `backend/QOL.Infrastructure/Migrations/`.
+- Database hiện có 10 entity/bảng nghiệp vụ: `Users`, `Locations`, `Languages`, `AudioFiles`, `Favorites`, `ListeningHistory`, `LocationReviews`, `SubscriptionPlans`, `SubscriptionOrders` và `UserSubscriptions`; bảy EF migrations hiện hành được quản lý tại `backend/QOL.Infrastructure/Migrations/`.
 - Khi thêm trường/bảng: cập nhật Domain entity → EF configuration/`QolDbContext` nếu cần → tạo migration → cập nhật API và frontend → kiểm thử → áp dụng migration bằng `dotnet ef database update`. Không sửa/xóa migration đã áp dụng và không chạy song song bộ SQL tạo lại các bảng này.
 - Đối chiếu 7 script SQL mở rộng, các bảng hiện hữu và phần chưa được ứng dụng dùng ở [sql-archive-reconciliation.md](./docs/database-design/sql-archive-reconciliation.md). Các bảng thông báo, thanh toán tự động, audit/settings và nội dung dịch/TTS trong gói SQL chưa có luồng ứng dụng; chưa nên tạo riêng lẻ trong database.
 
 ### Kiểm thử hiện tại
 
-- Backend: `dotnet test QOL.sln -c Release`; hiện bộ test có 10 domain tests. Chưa có test endpoint/API hoặc test tích hợp database trong source tests.
+- Backend: `dotnet test QOL.sln -c Release`; baseline có 11 domain/persistence-model tests. Chưa có test endpoint/API hoặc test tích hợp database trong source tests.
 - Frontend: `npm.cmd run build --workspace @qol/user-web`; hiện chưa có test runner hoặc frontend test files.
 - Vì vậy build xanh xác nhận biên dịch, chưa thay thế cho kiểm thử luồng đăng nhập, upload, đơn hàng hay quyền Admin trên runtime.
 
 Đã có schema khởi tạo cho `Users`, `Locations`, `Languages`, `AudioFiles`, `Favorites` và `ListeningHistory`. Languages có seed `vi`, `en`, `ko`, `zh`, `ja`; frontend đọc catalog từ API. API hiện có endpoint đọc danh sách ngôn ngữ, địa điểm và chi tiết địa điểm.
 
-Đăng ký, đăng nhập bằng cookie HTTP-only, hồ sơ cơ bản, phân quyền User/Admin, CRUD địa điểm, bản dịch/audio, yêu thích, lịch sử nghe, đánh giá địa điểm, gói dịch vụ, đơn hàng Pending và xác minh thủ công đã được triển khai. Admin có thể ẩn/hiện đánh giá. Chưa kết nối dịch vụ thanh toán, email, dịch thuật hoặc TTS bên ngoài.
+Đăng ký, đăng nhập bằng cookie HTTP-only, hồ sơ cơ bản, phân quyền User/Admin, CRUD địa điểm, nội dung/audio thủ công, yêu thích, lịch sử nghe, đánh giá địa điểm, gói dịch vụ, đơn hàng Pending và xác minh thủ công đã được triển khai. Admin có thể ẩn/hiện đánh giá. Chưa kết nối dịch vụ thanh toán, email, dịch thuật hoặc TTS bên ngoài.
 
 Trang chủ User Web có phần giới thiệu, tìm kiếm địa điểm, ngôn ngữ và lối vào trang gói dịch vụ. Ảnh và địa danh trên trang chủ là nội dung mẫu, không lấy từ database; danh sách ở trang Khám phá được tải từ API và tìm kiếm theo tên/địa chỉ. Admin nhập tiêu đề, bản dịch và tệp audio (MP3/WAV/OGG/M4A tối đa 20 MB) tại `/admin`; tệp được lưu cục bộ trong `backend\QOL.API\App_Data\audio`. Người dùng có thể phát thuyết minh, lưu yêu thích và xem lịch sử. Gói/đơn hàng được quản lý tại `/plans` và `/orders`; đơn luôn Pending cho tới khi Admin xác minh thủ công.
 

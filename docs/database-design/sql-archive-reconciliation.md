@@ -8,7 +8,7 @@ tạo, còn các script khác phụ thuộc vào bảng/model/API chưa có. EF 
 trong `backend/QOL.Infrastructure/Migrations/` tiếp tục là nguồn schema duy nhất
 cho ứng dụng hiện tại.
 
-Ngày 2026-11-05, database local `QOL` đã áp dụng đủ sáu migrations:
+Database local `QOL` đã áp dụng đủ bảy EF Core migrations hiện có:
 
 - `InitialCreate`
 - `AddAccountRolesAndPasswordHash`
@@ -16,10 +16,11 @@ Ngày 2026-11-05, database local `QOL` đã áp dụng đủ sáu migrations:
 - `AddAudioVisibility`
 - `AddSubscriptionsAndOrders`
 - `AddLocationReviews`
+- `AddUserSubscriptions`
 
-Database hiện có chín bảng nghiệp vụ: `Users`, `Locations`, `Languages`,
-`AudioFiles`, `Favorites`, `ListeningHistory`, `LocationReviews`,
-`SubscriptionPlans` và `SubscriptionOrders`.
+Model EF Core hiện có mười entity/bảng nghiệp vụ: `Users`, `Locations`,
+`Languages`, `AudioFiles`, `Favorites`, `ListeningHistory`, `LocationReviews`,
+`SubscriptionPlans`, `SubscriptionOrders` và `UserSubscriptions`.
 
 ## Đối chiếu từng phần trong ZIP
 
@@ -29,9 +30,9 @@ Database hiện có chín bảng nghiệp vụ: `Users`, `Locations`, `Languages
 | `003-locations.sql` | Địa điểm, GPS, danh mục, ảnh | `Locations` có trong EF; chưa có model/API cho GPS, danh mục, ảnh địa điểm. | Không chạy. Thiết kế model và API trước khi thêm các bảng/cột này. |
 | `004-content-translation-audio.sql` | Ngôn ngữ, bài viết, bản dịch, audio/TTS | `Languages` và `AudioFiles` có trong EF. Ứng dụng lưu tiêu đề, transcript và tệp audio thủ công; chưa có `Articles`, `Translations`, TTS hay `CategoryTranslations`. Script còn thay đổi `UserProfiles`, bảng chưa tồn tại. | Không chạy. Giữ luồng audio thủ công hiện tại; tích hợp nội dung dịch/TTS bằng model và migration khi có yêu cầu. |
 | `005-activity-reviews-notifications.sql` | Yêu thích, lịch sử nghe, đánh giá, báo cáo, thông báo | `Favorites`, `ListeningHistory`, `LocationReviews` đã có trong EF và được API dùng. `ReviewReports`, `Notifications` chưa có model/API. | Không chạy. Các bảng hiện có đã được tạo bởi migrations; thông báo/báo cáo là phạm vi riêng. |
-| `006-payment-subscription.sql` | Gói, đơn hàng, payment, đăng ký, hoàn tiền | `SubscriptionPlans` và `SubscriptionOrders` đã có trong EF. Đơn hàng chỉ Pending đến khi Admin xác minh thủ công; không có tích hợp payment provider. `Payments`, `UserSubscriptions`, `Refunds` chưa được ứng dụng sử dụng. | Không chạy. Không tạo bảng giao dịch/hoàn tiền khi chưa có nhà cung cấp thanh toán và nghiệp vụ tương ứng. |
+| `006-payment-subscription.sql` | Gói, đơn hàng, payment, đăng ký, hoàn tiền | `SubscriptionPlans`, `SubscriptionOrders` và `UserSubscriptions` đã có trong EF. Đơn hàng chỉ Pending đến khi Admin xác minh thủ công; không có tích hợp payment provider. `Payments` và `Refunds` chưa được ứng dụng sử dụng. | Không chạy. Không tạo bảng giao dịch/hoàn tiền khi chưa có nhà cung cấp thanh toán và nghiệp vụ tương ứng. |
 | `007-system-management.sql` | Audit log, cài đặt hệ thống, error log, user activity | Chưa có model/API tương ứng; hiện không phải dependency của các chức năng đang chạy. | Chưa thêm schema. Xác định yêu cầu lưu trữ, quyền truy cập và vòng đời log trước. |
-| `008-views-procedures.sql` | Views dashboard/báo cáo; thủ tục heartbeat, xác minh đơn và hết hạn thuê bao | API hiện tính dashboard bằng EF; chưa có model cho Payment/UserSubscription và chưa gọi các views/procedures này. | Không chạy. Các thủ tục phụ thuộc vào bảng chưa tồn tại và có thể trùng nghiệp vụ trong API. |
+| `008-views-procedures.sql` | Views dashboard/báo cáo; thủ tục heartbeat, xác minh đơn và hết hạn thuê bao | API hiện tính dashboard bằng EF và có model/luồng tạo `UserSubscription`; chưa có model cho Payment và chưa gọi các views/procedures này. | Không chạy. Các thủ tục phụ thuộc vào bảng chưa tồn tại và có thể trùng nghiệp vụ trong API. |
 
 ## Quy tắc duy trì schema
 

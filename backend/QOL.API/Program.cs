@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using QOL.API.Endpoints;
 using QOL.API.HealthChecks;
+using QOL.API.SeedData;
 using QOL.Domain.Entities;
 using QOL.Infrastructure.Persistence;
 
@@ -145,6 +146,20 @@ app.MapGet("/api/languages", async (QolDbContext db, CancellationToken cancellat
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+    var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("DevelopmentDataSeeder");
+    if (await dbContext.Database.CanConnectAsync())
+    {
+        await DevelopmentDataSeeder.SeedAsync(dbContext, passwordHasher, audioDirectory);
+    }
+    else
+    {
+        logger.LogWarning("Skipping development seed because the database is unavailable.");
+    }
 }
 
 app.Run();
