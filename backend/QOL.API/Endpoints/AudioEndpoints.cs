@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
-using Microsoft.AspNetCore.Antiforgery;
+using System.Buffers.Binary;
+using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -11,19 +13,42 @@ namespace QOL.API.Endpoints;
 public static class AudioEndpoints
 {
     private const long MaximumAudioSize = 20 * 1024 * 1024;
+    private const int MaximumAudioDurationSeconds = 3600;
     private const int MaximumTranscriptLength = 50000;
 
     public static void MapAudioEndpoints(this WebApplication app, string audioDirectory)
     {
         var publicAudio = app.MapGroup("/api/locations/{locationId:guid}/audio")
-            .WithTags("Audio");
+            .WithTags("Audio")
+            .RequireAuthorization();
 
-        publicAudio.MapGet("/", async (
+        publicAudio.MapGet("/", async Task<IResult> (
             Guid locationId,
             string? languageCode,
+            ClaimsPrincipal principal,
             QolDbContext db,
             CancellationToken cancellationToken) =>
         {
+            if (!Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var hasActiveSubscription = await db.UserSubscriptions.AnyAsync(
+                subscription => subscription.UserId == userId &&
+                    subscription.IsActive &&
+                    subscription.StartsAt <= now &&
+                    subscription.EndsAt > now,
+                cancellationToken);
+            if (!hasActiveSubscription)
+            {
+                return TypedResults.Problem(
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Active subscription required",
+                    detail: "An active subscription is required to listen to audio guides.");
+            }
+
             var query = db.AudioFiles
                 .AsNoTracking()
                 .Where(audio => audio.LocationId == locationId &&
@@ -59,6 +84,85 @@ public static class AudioEndpoints
         .WithName("GetLocationAudio")
         .WithSummary("List published audio guides for a destination")
         .Produces<AudioResponse[]>();
+
+        app.MapGet("/media/audio/{fileName}", async Task<IResult> (
+            string fileName,
+            ClaimsPrincipal principal,
+            QolDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(fileName) ||
+                !string.Equals(Path.GetFileName(fileName), fileName, StringComparison.Ordinal))
+            {
+                return TypedResults.NotFound();
+            }
+
+            var mediaUrl = $"/media/audio/{fileName}";
+            var audio = await db.AudioFiles
+                .AsNoTracking()
+                .Where(item => item.AudioUrl == mediaUrl)
+                .Select(item => new
+                {
+                    AudioIsActive = item.IsActive,
+                    LocationIsActive = item.Location.IsActive
+                })
+                .SingleOrDefaultAsync(cancellationToken);
+            var isAdmin = principal.IsInRole("Admin");
+            if (audio is null || (!isAdmin && (!audio.AudioIsActive || !audio.LocationIsActive)))
+            {
+                return TypedResults.NotFound();
+            }
+
+            if (!isAdmin)
+            {
+                if (!Guid.TryParse(
+                        principal.FindFirstValue(ClaimTypes.NameIdentifier),
+                        out var userId))
+                {
+                    return TypedResults.NotFound();
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                var hasActiveSubscription = await db.UserSubscriptions.AnyAsync(
+                    subscription => subscription.UserId == userId &&
+                        subscription.IsActive &&
+                        subscription.StartsAt <= now &&
+                        subscription.EndsAt > now,
+                    cancellationToken);
+                if (!hasActiveSubscription)
+                {
+                    return TypedResults.NotFound();
+                }
+            }
+
+            var root = Path.GetFullPath(audioDirectory) + Path.DirectorySeparatorChar;
+            var filePath = Path.GetFullPath(Path.Combine(audioDirectory, fileName));
+            if (!filePath.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(filePath))
+            {
+                return TypedResults.NotFound();
+            }
+
+            var contentType = Path.GetExtension(fileName).ToLowerInvariant() switch
+            {
+                ".mp3" => "audio/mpeg",
+                ".wav" => "audio/wav",
+                ".ogg" => "audio/ogg",
+                ".m4a" => "audio/mp4",
+                _ => "application/octet-stream"
+            };
+            var stream = new FileStream(
+                filePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 81920,
+                useAsync: true);
+            return TypedResults.File(stream, contentType, enableRangeProcessing: true);
+        })
+        .WithName("GetAudioMedia")
+        .WithSummary("Stream audio after checking its publication status")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound);
 
         var adminAudio = app.MapGroup("/api/admin/locations/{locationId:guid}/audio")
             .WithTags("Administration", "Audio")
@@ -151,6 +255,7 @@ public static class AudioEndpoints
             var fileName = $"{Guid.NewGuid():N}{extension}";
             var filePath = Path.Combine(audioDirectory, fileName);
             Directory.CreateDirectory(audioDirectory);
+            var databaseSaved = false;
             try
             {
                 await using (var destination = new FileStream(
@@ -164,15 +269,33 @@ public static class AudioEndpoints
                     await request.File.CopyToAsync(destination, cancellationToken);
                 }
 
+                var durationSeconds = extension == ".wav"
+                    ? ReadWavDurationSeconds(filePath)
+                    : request.DurationSeconds;
+                if (durationSeconds is null or <= 0 or > MaximumAudioDurationSeconds)
+                {
+                    File.Delete(filePath);
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        [nameof(request.File)] =
+                        [
+                            extension == ".wav"
+                                ? "The WAV file has no valid duration or exceeds one hour."
+                                : "Audio duration must be between 1 second and 1 hour."
+                        ]
+                    });
+                }
+
                 var audio = new AudioFile(
                     locationId,
                     request.LanguageId,
                     request.Title,
                     request.Transcript,
                     $"/media/audio/{fileName}",
-                    request.DurationSeconds);
+                    durationSeconds.Value);
                 db.AudioFiles.Add(audio);
                 await db.SaveChangesAsync(cancellationToken);
+                databaseSaved = true;
 
                 return TypedResults.Created(
                     $"/api/locations/{locationId}/audio",
@@ -180,7 +303,7 @@ public static class AudioEndpoints
             }
             catch
             {
-                if (File.Exists(filePath))
+                if (!databaseSaved && File.Exists(filePath))
                 {
                     File.Delete(filePath);
                 }
@@ -190,6 +313,7 @@ public static class AudioEndpoints
         })
         .WithName("UploadLocationAudio")
         .WithSummary("Add translated audio content to a destination")
+        .RequireRateLimiting("upload")
         .Accepts<UploadAudioRequest>("multipart/form-data")
         .Produces<AudioResponse>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
@@ -216,6 +340,7 @@ public static class AudioEndpoints
         })
         .WithName("UpdateAudioContent")
         .WithSummary("Edit an audio guide title and translated transcript")
+        .RequireRateLimiting("sensitive-write")
         .Produces<AudioResponse>()
         .Produces(StatusCodes.Status404NotFound)
         .ProducesValidationProblem();
@@ -241,6 +366,7 @@ public static class AudioEndpoints
         })
         .WithName("SetAudioVisibility")
         .WithSummary("Publish or hide an audio guide")
+        .RequireRateLimiting("sensitive-write")
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status404NotFound)
         .ProducesValidationProblem();
@@ -282,6 +408,65 @@ public static class AudioEndpoints
             ".m4a" => header.Length >= 8 && header[4..8].SequenceEqual("ftyp"u8),
             _ => false
         };
+
+    private static int? ReadWavDurationSeconds(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
+
+        if (!reader.ReadBytes(4).AsSpan().SequenceEqual("RIFF"u8))
+        {
+            return null;
+        }
+
+        var riffSize = reader.ReadUInt32();
+        if (!reader.ReadBytes(4).AsSpan().SequenceEqual("WAVE"u8) ||
+            riffSize < 4 ||
+            riffSize + 8L > stream.Length)
+        {
+            return null;
+        }
+
+        var riffEnd = 8L + riffSize;
+        uint? byteRate = null;
+        uint? dataSize = null;
+
+        while (stream.Position + 8 <= riffEnd)
+        {
+            var chunkId = Encoding.ASCII.GetString(reader.ReadBytes(4));
+            var chunkSize = reader.ReadUInt32();
+            var chunkStart = stream.Position;
+            var paddedSize = chunkSize + (long)(chunkSize & 1);
+            if (paddedSize > riffEnd - chunkStart)
+            {
+                return null;
+            }
+
+            if (chunkId == "fmt " && chunkSize >= 16)
+            {
+                var format = reader.ReadBytes(16);
+                byteRate = BinaryPrimitives.ReadUInt32LittleEndian(format.AsSpan(8, 4));
+            }
+            else if (chunkId == "data")
+            {
+                dataSize = chunkSize;
+            }
+
+            stream.Position = chunkStart + paddedSize;
+            if (byteRate is not null && dataSize is not null)
+            {
+                break;
+            }
+        }
+
+        if (byteRate is null or 0 || dataSize is null or 0)
+        {
+            return null;
+        }
+
+        var seconds = ((long)dataSize.Value + byteRate.Value - 1) / byteRate.Value;
+        return seconds <= int.MaxValue ? (int)seconds : null;
+    }
 }
 
 public sealed record UploadAudioRequest
@@ -297,7 +482,6 @@ public sealed record UploadAudioRequest
     [Required]
     public required Guid LanguageId { get; init; }
 
-    [Range(1, 86400)]
     public required int DurationSeconds { get; init; }
 
     [Required]

@@ -31,6 +31,7 @@ public static class CommerceEndpoints
 
         var adminPlans = app.MapGroup("/api/admin/plans")
             .WithTags("Administration", "Subscription plans")
+            .RequireRateLimiting("sensitive-write")
             .RequireAuthorization(policy => policy.RequireRole("Admin"));
 
         adminPlans.MapGet("/", async (
@@ -117,6 +118,7 @@ public static class CommerceEndpoints
 
         var myOrders = app.MapGroup("/api/me/orders")
             .WithTags("Orders")
+            .RequireRateLimiting("sensitive-write")
             .RequireAuthorization();
 
         myOrders.MapGet("/", async Task<Results<Ok<SubscriptionOrderResponse[]>, UnauthorizedHttpResult>> (
@@ -188,6 +190,7 @@ public static class CommerceEndpoints
 
         var adminOrders = app.MapGroup("/api/admin/orders")
             .WithTags("Administration", "Orders")
+            .RequireRateLimiting("sensitive-write")
             .RequireAuthorization(policy => policy.RequireRole("Admin"));
 
         adminOrders.MapGet("/", async (
@@ -309,6 +312,7 @@ public static class CommerceEndpoints
             return TypedResults.Ok(subscriptions);
         })
         .RequireAuthorization()
+        .RequireRateLimiting("sensitive-write")
         .WithTags("Subscriptions")
         .WithName("GetMySubscriptions")
         .Produces<UserSubscriptionResponse[]>();
@@ -328,6 +332,7 @@ public static class CommerceEndpoints
             return TypedResults.Ok(counts);
         })
         .RequireAuthorization(policy => policy.RequireRole("Admin"))
+        .RequireRateLimiting("sensitive-write")
         .WithTags("Administration")
         .WithName("GetAdminDashboard")
         .WithSummary("Get key QOL administration counts")

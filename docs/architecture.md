@@ -45,7 +45,9 @@ Infrastructure must not be referenced directly from Domain or Application code.
 2. The system prevents duplicate pending orders for the same user and plan.
 3. An administrator verifies or rejects the order.
 4. Verification creates a `UserSubscription` with the plan duration.
-5. The subscription can be queried by the user and is the business source for future entitlement checks.
+5. Active audio access requires a subscription whose start time has arrived and whose end time is in the future.
+
+Audio media keeps its `/media/audio/{fileName}` URL, but the API streams it only when its audio and location are active and the requesting user has a current subscription. Administrators may preview hidden audio. WAV duration is derived from its RIFF chunks; MP3, OGG, and M4A use the submitted duration with a 1-hour maximum because the current implementation does not parse those formats.
 
 Payment providers and external emails must be isolated behind application interfaces before production integration.
 

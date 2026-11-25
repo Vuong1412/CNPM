@@ -234,6 +234,7 @@ public static class AuthEndpoints
                 : TypedResults.Ok(ToResponse(user));
         })
         .RequireAuthorization()
+        .RequireRateLimiting("sensitive-write")
         .WithName("UpdateCurrentUserProfile")
         .WithSummary("Update the signed-in user's display name")
         .Produces<AuthUserResponse>()
@@ -283,6 +284,7 @@ public static class AuthEndpoints
             return TypedResults.NoContent();
         })
         .RequireAuthorization()
+        .RequireRateLimiting("sensitive-write")
         .WithName("ChangeCurrentUserPassword")
         .WithSummary("Change the signed-in user's password")
         .Produces(StatusCodes.Status204NoContent)
@@ -296,6 +298,7 @@ public static class AuthEndpoints
             return TypedResults.NoContent();
         })
         .RequireAuthorization()
+        .RequireRateLimiting("sensitive-write")
         .WithName("Logout")
         .WithSummary("Sign out of the current session")
         .Produces(StatusCodes.Status204NoContent)

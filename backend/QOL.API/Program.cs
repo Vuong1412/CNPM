@@ -1,9 +1,10 @@
 using System.Threading.RateLimiting;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
 using QOL.API.Endpoints;
 using QOL.API.HealthChecks;
 using QOL.API.SeedData;
@@ -20,7 +21,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddDbContext<QolDbContext>(options => options.UseSqlServer(connectionString));
-var audioDirectory = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "audio");
+var audioDirectory = builder.Configuration["Storage:AudioDirectory"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "audio");
 Directory.CreateDirectory(audioDirectory);
 builder.Services.AddQolInfrastructure();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
@@ -44,7 +46,7 @@ builder.Services
         options.Cookie.Name = "QOL.Session";
         options.Cookie.HttpOnly = true;
         options.Cookie.IsEssential = true;
-        options.Cookie.Path = "/api";
+        options.Cookie.Path = "/";
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
@@ -59,6 +61,23 @@ builder.Services
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         };
+        options.Events.OnValidatePrincipal = async context =>
+        {
+            var userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            var dbContext = context.HttpContext.RequestServices.GetRequiredService<QolDbContext>();
+            var isActive = Guid.TryParse(userIdValue, out var userId) &&
+                await dbContext.Users
+                    .AsNoTracking()
+                    .AnyAsync(
+                        user => user.Id == userId && user.IsActive,
+                        context.HttpContext.RequestAborted);
+
+            if (!isActive)
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            }
+        };
     });
 builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(options =>
@@ -69,6 +88,26 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+    options.AddPolicy("sensitive-write", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+    options.AddPolicy("upload", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 6,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
                 AutoReplenishment = true
@@ -87,11 +126,6 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(audioDirectory),
-    RequestPath = "/media/audio"
-});
 
 if (app.Environment.IsProduction())
 {
@@ -171,3 +205,5 @@ public sealed record LanguageResponse(
     string Name,
     string NativeName,
     bool IsEnabled);
+
+public partial class Program { }

@@ -14,6 +14,7 @@ export function LocationDetailPage() {
   const [audioGuides, setAudioGuides] = useState<AudioGuide[]>([]);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isSavingFavorite, setIsSavingFavorite] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
@@ -29,19 +30,34 @@ export function LocationDetailPage() {
   const completedSessions = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!id) {
+    if (!id || !user) {
+      setAudioGuides([]);
+      setAudioLoading(false);
+      setAudioError(null);
+      setSubscriptionRequired(false);
       return;
     }
 
     const controller = new AbortController();
     setAudioLoading(true);
     setAudioError(null);
+    setSubscriptionRequired(false);
     apiClient
       .get<AudioGuide[]>(`locations/${encodeURIComponent(id)}/audio`, controller.signal)
       .then(setAudioGuides)
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          setAudioError(cause instanceof Error ? cause.message : t("audio.loadError"));
+          const requiresPlan = cause instanceof ApiError && cause.status === 403;
+          setSubscriptionRequired(requiresPlan);
+          setAudioError(
+            requiresPlan
+              ? t("audio.subscriptionRequired")
+              : cause instanceof ApiError && cause.status === 401
+                ? t("audio.signInRequired")
+                : cause instanceof Error
+                  ? cause.message
+                  : t("audio.loadError")
+          );
         }
       })
       .finally(() => {
@@ -51,7 +67,7 @@ export function LocationDetailPage() {
       });
 
     return () => controller.abort();
-  }, [id, t]);
+  }, [id, t, user]);
 
   useEffect(() => {
     if (!location || !user) {
@@ -289,7 +305,23 @@ export function LocationDetailPage() {
           <section className="audio-guides" aria-labelledby="audio-guides-title">
             <h2 id="audio-guides-title">{t("audio.title")}</h2>
             {audioLoading && <p role="status">{t("common.loading")}</p>}
-            {audioError && <p role="alert">{t("audio.loadError")}: {audioError}</p>}
+            {!user && (
+              <p>
+                {t("audio.signInRequired")}{" "}
+                <Link to="/login">{t("auth.signIn")}</Link>
+              </p>
+            )}
+            {audioError && (
+              <p role="alert">
+                {audioError}
+                {subscriptionRequired && (
+                  <>
+                    {" "}
+                    <Link to="/plans">{t("plans.title")}</Link>
+                  </>
+                )}
+              </p>
+            )}
             {!audioLoading && !audioError && audioGuides.length === 0 && (
               <p>{t("audio.empty")}</p>
             )}

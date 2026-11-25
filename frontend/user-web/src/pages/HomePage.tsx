@@ -1,33 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-
-const destinations = [
-  {
-    name: "Vịnh Hạ Long",
-    location: "Quảng Ninh, Việt Nam",
-    category: "Thiên nhiên",
-    image:
-      "https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=900&q=85",
-    className: "destination-card destination-card-tall"
-  },
-  {
-    name: "Phố cổ Hội An",
-    location: "Quảng Nam, Việt Nam",
-    category: "Văn hóa",
-    image:
-      "https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=900&q=85",
-    className: "destination-card"
-  },
-  {
-    name: "Ruộng bậc thang",
-    location: "Sa Pa, Việt Nam",
-    category: "Thiên nhiên",
-    image:
-      "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=900&q=85",
-    className: "destination-card"
-  }
-];
+import { useLocations } from "../hooks/useLocations";
 
 const languages = [
   { code: "vi", label: "Tiếng Việt", flag: "🇻🇳" },
@@ -65,6 +39,7 @@ function PlayIcon() {
 export function HomePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { locations, isLoading, error } = useLocations();
   const [query, setQuery] = useState("");
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -151,24 +126,24 @@ export function HomePage() {
           </Link>
         </div>
 
+        {isLoading && <p role="status">{t("common.loading")}</p>}
+        {error && <p role="alert">{t("explore.error", { message: error })}</p>}
+        {!isLoading && !error && locations.length === 0 && (
+          <p className="explore-empty">{t("explore.empty")}</p>
+        )}
         <div className="destination-grid">
-          {destinations.map((destination, index) => (
+          {locations.slice(0, 3).map((location, index) => (
             <Link
-              className={destination.className}
-              key={destination.name}
-              to={`/explore?q=${encodeURIComponent(destination.name)}`}
+              className={`destination-card${index === 0 ? " destination-card-tall" : ""}`}
+              key={location.id}
+              to={`/locations/${encodeURIComponent(location.id)}`}
             >
-              <img alt="" loading="lazy" src={destination.image} />
               <span className="destination-shade" />
-              <span className="destination-index">0{index + 1}</span>
+              <span className="destination-index">{String(index + 1).padStart(2, "0")}</span>
               <span className="destination-info">
-                <span className="destination-category">
-                  {destination.category === "Thiên nhiên"
-                    ? t("home.categoryNature")
-                    : t("home.categoryCulture")}
-                </span>
-                <strong>{destination.name}</strong>
-                <small>{destination.location}</small>
+                <span className="destination-category">{t("home.destinationsEyebrow")}</span>
+                <strong>{location.name}</strong>
+                <small>{location.address}</small>
               </span>
               <span className="destination-arrow">
                 <ArrowIcon />
@@ -176,18 +151,11 @@ export function HomePage() {
             </Link>
           ))}
         </div>
-        <p className="demo-note">
-          {t("home.demoNote")}
-        </p>
       </section>
 
       <section className="story-section">
         <div className="story-image-wrap">
-          <img
-            alt="Khung cảnh thiên nhiên xanh mát tại Việt Nam"
-            loading="lazy"
-            src="https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=85"
-          />
+          <div className="story-landscape" aria-hidden="true" />
           <div className="audio-preview-card">
             <span className="audio-art">
               <PlayIcon />

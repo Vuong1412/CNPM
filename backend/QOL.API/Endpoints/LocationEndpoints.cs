@@ -45,6 +45,7 @@ public static class LocationEndpoints
 
         var adminLocations = app.MapGroup("/api/admin/locations")
             .WithTags("Administration", "Locations")
+            .RequireRateLimiting("sensitive-write")
             .RequireAuthorization(policy => policy.RequireRole("Admin"));
 
         adminLocations.MapGet("/", async (

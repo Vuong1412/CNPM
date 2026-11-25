@@ -39,6 +39,7 @@ public static class ReviewEndpoints
 
         var userReviews = app.MapGroup("/api/me/locations/{locationId:guid}/review")
             .WithTags("Reviews")
+            .RequireRateLimiting("sensitive-write")
             .RequireAuthorization();
 
         userReviews.MapGet("/", async Task<IResult> (
@@ -145,6 +146,7 @@ public static class ReviewEndpoints
 
         var adminReviews = app.MapGroup("/api/admin/reviews")
             .WithTags("Administration", "Reviews")
+            .RequireRateLimiting("sensitive-write")
             .RequireAuthorization(policy => policy.RequireRole("Admin"));
 
         adminReviews.MapGet("/", async (

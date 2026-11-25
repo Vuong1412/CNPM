@@ -1,6 +1,5 @@
 export interface ApiClientOptions {
   baseUrl: string;
-  getAccessToken?: () => string | null;
 }
 
 export class ApiError extends Error {
@@ -14,7 +13,7 @@ export class ApiError extends Error {
   }
 }
 
-export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
+export function createApiClient({ baseUrl }: ApiClientOptions) {
   const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   let antiforgeryToken: string | null = null;
 
@@ -35,11 +34,6 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientOptions) {
     const url = new URL(path.replace(/^\/+/, ""), normalizedBaseUrl);
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
-
-    const accessToken = getAccessToken?.();
-    if (accessToken) {
-      headers.set("Authorization", `Bearer ${accessToken}`);
-    }
 
     const response = await fetch(url, { ...init, headers, credentials: "include" });
     if (response.status === 204) {

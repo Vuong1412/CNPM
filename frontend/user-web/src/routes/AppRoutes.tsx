@@ -12,6 +12,7 @@ import { LocationDetailPage } from "../pages/locations/LocationDetailPage";
 import { LocationListPage } from "../pages/locations/LocationListPage";
 import { PlansPage } from "../pages/PlansPage";
 import { OrdersPage } from "../pages/OrdersPage";
+import { UnauthorizedPage } from "../pages/UnauthorizedPage";
 import { ProtectedRoute } from "./ProtectedRoute";
 
 export function AppRoutes() {
@@ -30,6 +31,7 @@ export function AppRoutes() {
       <Route path="/register" element={<AuthPage mode="register" />} />
       <Route path="/bootstrap-admin" element={<BootstrapAdminPage />} />
       <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminPage /></ProtectedRoute>} />
+      <Route path="/not-authorized" element={<UnauthorizedPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

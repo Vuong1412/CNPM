@@ -48,6 +48,8 @@ public sealed class User
 
     public void AssignAdministratorRole() => Role = "Admin";
 
+    public void SetActive(bool isActive) => IsActive = isActive;
+
     public void UpdateProfile(string displayName)
     {
         if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > 150)

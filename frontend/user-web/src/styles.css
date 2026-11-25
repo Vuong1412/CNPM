@@ -210,9 +210,9 @@ main {
 }
 
 .hero-photo {
-  background-image: url("https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?auto=format&fit=crop&w=2200&q=90");
-  background-position: center 54%;
-  background-size: cover;
+  background:
+    radial-gradient(ellipse at 78% 18%, rgba(216, 171, 106, 0.75), transparent 34%),
+    linear-gradient(125deg, #123f34 5%, #2f745e 55%, #a87950 100%);
   transform: scale(1.015);
   animation: hero-reveal 800ms ease-out both;
 }
@@ -551,21 +551,21 @@ main {
   min-width: 0;
   overflow: hidden;
   border-radius: 12px;
-  background: #dde4de;
+  background: linear-gradient(145deg, #286a56, #bd9566);
   color: #fff;
   isolation: isolate;
 }
 
-.destination-card img,
-.story-image-wrap > img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 450ms cubic-bezier(0.2, 0.7, 0.2, 1);
+.destination-card:nth-child(3n + 2) {
+  background: linear-gradient(145deg, #426d69, #bd9566);
 }
 
-.destination-card:hover img {
-  transform: scale(1.045);
+.destination-card:nth-child(3n) {
+  background: linear-gradient(145deg, #496c4f, #a2795e);
+}
+
+.destination-card:hover {
+  filter: brightness(1.06);
 }
 
 .destination-shade {
@@ -656,8 +656,13 @@ main {
   background: #e1e9e1;
 }
 
-.story-image-wrap > img {
-  object-position: center;
+.story-landscape {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 75% 22%, rgba(241, 199, 133, 0.85), transparent 24%),
+    linear-gradient(155deg, transparent 48%, rgba(31, 82, 57, 0.82) 49%),
+    linear-gradient(25deg, #d6e3d1 0%, #7fa588 45%, #e5bf87 100%);
 }
 
 .audio-preview-card {

@@ -53,7 +53,7 @@ Mở `http://localhost:5173/explore`. API trong Compose chạy ở `http://local
 
 ### Kiểm thử hiện tại
 
-- Backend: `dotnet test QOL.sln -c Release`; baseline có 11 domain/persistence-model tests. Chưa có test endpoint/API hoặc test tích hợp database trong source tests.
+- Backend: `dotnet test QOL.sln -c Release`; hiện có unit tests và API integration tests chạy bằng WebApplicationFactory cùng EF InMemory. Các test API bao phủ inactive user cookie, trạng thái media, yêu cầu subscription và thời lượng WAV.
 - Frontend: `npm.cmd run build --workspace @qol/user-web`; hiện chưa có test runner hoặc frontend test files.
 - Vì vậy build xanh xác nhận biên dịch, chưa thay thế cho kiểm thử luồng đăng nhập, upload, đơn hàng hay quyền Admin trên runtime.
 
@@ -61,7 +61,7 @@ Mở `http://localhost:5173/explore`. API trong Compose chạy ở `http://local
 
 Đăng ký, đăng nhập bằng cookie HTTP-only, hồ sơ cơ bản, phân quyền User/Admin, CRUD địa điểm, nội dung/audio thủ công, yêu thích, lịch sử nghe, đánh giá địa điểm, gói dịch vụ, đơn hàng Pending và xác minh thủ công đã được triển khai. Admin có thể ẩn/hiện đánh giá. Chưa kết nối dịch vụ thanh toán, email, dịch thuật hoặc TTS bên ngoài.
 
-Trang chủ User Web có phần giới thiệu, tìm kiếm địa điểm, ngôn ngữ và lối vào trang gói dịch vụ. Ảnh và địa danh trên trang chủ là nội dung mẫu, không lấy từ database; danh sách ở trang Khám phá được tải từ API và tìm kiếm theo tên/địa chỉ. Admin nhập tiêu đề, bản dịch và tệp audio (MP3/WAV/OGG/M4A tối đa 20 MB) tại `/admin`; tệp được lưu cục bộ trong `backend\QOL.API\App_Data\audio`. Người dùng có thể phát thuyết minh, lưu yêu thích và xem lịch sử. Gói/đơn hàng được quản lý tại `/plans` và `/orders`; đơn luôn Pending cho tới khi Admin xác minh thủ công.
+Trang chủ User Web có phần giới thiệu, tìm kiếm địa điểm, ngôn ngữ và lối vào trang gói dịch vụ. Danh sách địa điểm trên trang chủ và trang Khám phá được tải từ API; hình minh họa dùng gradient nội bộ, không tải ảnh Unsplash. Admin nhập tiêu đề, bản dịch và tệp audio (MP3/WAV/OGG/M4A tối đa 20 MB) tại `/admin`; tệp được lưu cục bộ trong `backend\QOL.API\App_Data\audio`. WAV được đo thời lượng từ RIFF header; các định dạng MP3/OGG/M4A dùng thời lượng khai báo bị giới hạn tối đa một giờ. URL `/media/audio/{fileName}` được kiểm tra trạng thái audio, địa điểm và subscription còn hạn trước khi phát; Admin vẫn có thể nghe thử nội dung đã ẩn. Người dùng phải đăng nhập và có subscription còn hạn để lấy danh sách audio; thiếu gói sẽ nhận HTTP 403. Gói/đơn hàng được quản lý tại `/plans` và `/orders`; đơn luôn Pending cho tới khi Admin xác minh thủ công.
 
 ## Chạy frontend
 

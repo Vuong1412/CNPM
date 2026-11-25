@@ -14,6 +14,7 @@ public static class UserActivityEndpoints
     {
         var favorites = app.MapGroup("/api/me/favorites")
             .WithTags("Favorites")
+            .RequireRateLimiting("sensitive-write")
             .RequireAuthorization();
 
         favorites.MapGet("/", async Task<Results<Ok<FavoriteResponse[]>, UnauthorizedHttpResult>> (
@@ -107,6 +108,7 @@ public static class UserActivityEndpoints
 
         var history = app.MapGroup("/api/me/listening-history")
             .WithTags("Listening history")
+            .RequireRateLimiting("sensitive-write")
             .RequireAuthorization();
 
         history.MapGet("/", async Task<Results<Ok<ListeningHistoryResponse[]>, UnauthorizedHttpResult>> (

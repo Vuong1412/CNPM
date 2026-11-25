@@ -38,6 +38,18 @@ public sealed class ModuleEntityTests
     }
 
     [Fact]
+    public void User_CanBeLockedAndReactivated()
+    {
+        var user = new User("person@example.com", "Traveler");
+
+        user.SetActive(false);
+        Assert.False(user.IsActive);
+
+        user.SetActive(true);
+        Assert.True(user.IsActive);
+    }
+
+    [Fact]
     public void Location_CanBeUpdatedAndSoftDeleted()
     {
         var location = new Location("Old name", "Old address");
