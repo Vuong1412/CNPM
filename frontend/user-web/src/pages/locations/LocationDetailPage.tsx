@@ -10,7 +10,7 @@ export function LocationDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams();
   const { location, isLoading, error, notFound } = useLocation(id);
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const [audioGuides, setAudioGuides] = useState<AudioGuide[]>([]);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -30,11 +30,15 @@ export function LocationDetailPage() {
   const completedSessions = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!id || !user) {
+    if (!id) {
       setAudioGuides([]);
       setAudioLoading(false);
       setAudioError(null);
       setSubscriptionRequired(false);
+      return;
+    }
+    if (isAuthLoading) {
+      setAudioLoading(true);
       return;
     }
 
@@ -47,11 +51,11 @@ export function LocationDetailPage() {
       .then(setAudioGuides)
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
-          const requiresPlan = cause instanceof ApiError && cause.status === 403;
+          const requiresPlan = cause instanceof ApiError && cause.status === 402;
           setSubscriptionRequired(requiresPlan);
           setAudioError(
             requiresPlan
-              ? t("audio.subscriptionRequired")
+              ? t(user ? "audio.subscriptionRequired" : "audio.signInRequired")
               : cause instanceof ApiError && cause.status === 401
                 ? t("audio.signInRequired")
                 : cause instanceof Error
@@ -67,7 +71,7 @@ export function LocationDetailPage() {
       });
 
     return () => controller.abort();
-  }, [id, t, user]);
+  }, [id, isAuthLoading, t, user]);
 
   useEffect(() => {
     if (!location || !user) {
@@ -305,22 +309,15 @@ export function LocationDetailPage() {
           <section className="audio-guides" aria-labelledby="audio-guides-title">
             <h2 id="audio-guides-title">{t("audio.title")}</h2>
             {audioLoading && <p role="status">{t("common.loading")}</p>}
-            {!user && (
-              <p>
-                {t("audio.signInRequired")}{" "}
-                <Link to="/login">{t("auth.signIn")}</Link>
-              </p>
-            )}
             {audioError && (
-              <p role="alert">
-                {audioError}
+              <>
+                <p role="alert">{audioError}</p>
                 {subscriptionRequired && (
-                  <>
-                    {" "}
-                    <Link to="/plans">{t("plans.title")}</Link>
-                  </>
+                  <Link className="button-primary" to={user ? "/plans" : "/login"}>
+                    {t(user ? "nav.plans" : "nav.login")}
+                  </Link>
                 )}
-              </p>
+              </>
             )}
             {!audioLoading && !audioError && audioGuides.length === 0 && (
               <p>{t("audio.empty")}</p>

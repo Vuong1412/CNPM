@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import type { SubscriptionOrder } from "@qol/shared";
+import type { SubscriptionOrder, UserSubscription } from "@qol/shared";
 import { useAuth } from "../context/AuthContext";
 import { apiClient } from "../services/api";
 
@@ -17,6 +17,7 @@ export function OrdersPage() {
   const { t } = useTranslation();
   const { user, isLoading: isAuthLoading } = useAuth();
   const [orders, setOrders] = useState<SubscriptionOrder[]>([]);
+  const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,9 +28,14 @@ export function OrdersPage() {
     }
 
     const controller = new AbortController();
-    apiClient
-      .get<SubscriptionOrder[]>("me/orders", controller.signal)
-      .then(setOrders)
+    Promise.all([
+      apiClient.get<SubscriptionOrder[]>("me/orders", controller.signal),
+      apiClient.get<UserSubscription[]>("me/subscriptions", controller.signal)
+    ])
+      .then(([userOrders, userSubscriptions]) => {
+        setOrders(userOrders);
+        setSubscriptions(userSubscriptions);
+      })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) {
           setError(cause instanceof Error ? cause.message : t("orders.loadError"));
@@ -61,6 +67,30 @@ export function OrdersPage() {
         <>
           <p>{t("orders.description")}</p>
           {error && <p className="form-error" role="alert">{error}</p>}
+          {!error && (
+            <section className="subscription-summary" aria-labelledby="active-subscriptions-title">
+              <h2 id="active-subscriptions-title">{t("orders.activeSubscription")}</h2>
+              {subscriptions.some((subscription) => subscription.isActive) ? (
+                <div className="activity-list">
+                  {subscriptions.filter((subscription) => subscription.isActive).map((subscription) => (
+                    <article className="activity-card" key={subscription.id}>
+                      <h3>{subscription.planName}</h3>
+                      <p>
+                        {t("orders.expiresAt", {
+                          date: new Date(subscription.endsAt).toLocaleDateString()
+                        })}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p>
+                  {t("orders.noActiveSubscription")}{" "}
+                  <Link to="/plans">{t("nav.plans")}</Link>
+                </p>
+              )}
+            </section>
+          )}
           {!error && orders.length === 0 && (
             <p className="admin-empty">{t("orders.empty")}</p>
           )}

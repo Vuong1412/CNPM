@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Identity;
@@ -81,37 +82,43 @@ public sealed class AudioAccessApiTests
     }
 
     [Fact]
-    public async Task PublicAudioRequiresAnActiveSubscription()
+    public async Task UserWithoutSubscriptionGetsPaymentRequiredWithAvailablePlans()
     {
         using var factory = new ApiTestFactory();
         using var client = factory.CreateClient();
         var user = await SeedUserAsync(factory);
         var (_, _, audio) = await SeedAudioAsync(factory, isActive: true);
+        await SeedPlanAsync(factory);
         var fileName = Path.GetFileName(audio.AudioUrl);
         await File.WriteAllBytesAsync(Path.Combine(factory.AudioDirectory, fileName), [1, 2, 3]);
         await SignInAsync(client);
 
         var withoutSubscription = await client.GetAsync($"/api/locations/{audio.LocationId}/audio");
-        Assert.Equal(HttpStatusCode.Forbidden, withoutSubscription.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(audio.AudioUrl)).StatusCode);
+        await AssertSubscriptionRequiredAsync(withoutSubscription, requiresAuthentication: false);
+        await AssertSubscriptionRequiredAsync(
+            await client.GetAsync(audio.AudioUrl),
+            requiresAuthentication: false);
 
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
-            var plan = new SubscriptionPlan("Test", "Test plan", 1, "USD", 30);
-            var order = new SubscriptionOrder(user.Id, plan);
-            db.SubscriptionPlans.Add(plan);
-            db.SubscriptionOrders.Add(order);
-            db.UserSubscriptions.Add(new UserSubscription(
-                user.Id,
-                plan.Id,
-                order.Id,
-                plan.Name,
-                plan.Currency,
-                plan.Price,
-                plan.DurationDays));
-            await db.SaveChangesAsync();
-        }
+        using var anonymousClient = factory.CreateClient();
+        await AssertSubscriptionRequiredAsync(
+            await anonymousClient.GetAsync($"/api/locations/{audio.LocationId}/audio"),
+            requiresAuthentication: true);
+        await AssertSubscriptionRequiredAsync(
+            await anonymousClient.GetAsync(audio.AudioUrl),
+            requiresAuthentication: true);
+    }
+
+    [Fact]
+    public async Task UserWithActiveSubscriptionCanListAndStreamAudio()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        var user = await SeedUserAsync(factory);
+        var (_, _, audio) = await SeedAudioAsync(factory, isActive: true);
+        await SeedSubscriptionAsync(factory, user.Id);
+        var fileName = Path.GetFileName(audio.AudioUrl);
+        await File.WriteAllBytesAsync(Path.Combine(factory.AudioDirectory, fileName), [1, 2, 3]);
+        await SignInAsync(client);
 
         var withSubscription = await client.GetAsync($"/api/locations/{audio.LocationId}/audio");
         Assert.Equal(HttpStatusCode.OK, withSubscription.StatusCode);
@@ -119,6 +126,49 @@ public sealed class AudioAccessApiTests
         Assert.Contains(audioItems!, item => item.Id == audio.Id);
         var mediaResponse = await client.GetAsync(audio.AudioUrl);
         Assert.Equal(HttpStatusCode.OK, mediaResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExpiredSubscriptionIsDeactivatedAndCannotAccessAudio()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        var user = await SeedUserAsync(factory);
+        var (_, _, audio) = await SeedAudioAsync(factory, isActive: true);
+        var subscriptionId = await SeedSubscriptionAsync(factory, user.Id, isExpired: true);
+        await SeedPlanAsync(factory);
+        var fileName = Path.GetFileName(audio.AudioUrl);
+        await File.WriteAllBytesAsync(Path.Combine(factory.AudioDirectory, fileName), [1, 2, 3]);
+        await SignInAsync(client);
+
+        await AssertSubscriptionRequiredAsync(
+            await client.GetAsync($"/api/locations/{audio.LocationId}/audio"),
+            requiresAuthentication: false);
+        await AssertSubscriptionRequiredAsync(
+            await client.GetAsync(audio.AudioUrl),
+            requiresAuthentication: false);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+        var storedSubscription = await db.UserSubscriptions.SingleAsync(item => item.Id == subscriptionId);
+        Assert.False(storedSubscription.IsActive);
+    }
+
+    [Fact]
+    public async Task AdminCanListAndStreamAudioWithoutSubscription()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        await SeedUserAsync(factory, isAdmin: true);
+        var (_, _, audio) = await SeedAudioAsync(factory, isActive: true);
+        var fileName = Path.GetFileName(audio.AudioUrl);
+        await File.WriteAllBytesAsync(Path.Combine(factory.AudioDirectory, fileName), [1, 2, 3]);
+        await SignInAsync(client);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.GetAsync($"/api/locations/{audio.LocationId}/audio")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(audio.AudioUrl)).StatusCode);
     }
 
     [Fact]
@@ -296,6 +346,59 @@ public sealed class AudioAccessApiTests
         db.AudioFiles.Add(audio);
         await db.SaveChangesAsync();
         return (location, language, audio);
+    }
+
+    private static async Task<Guid> SeedSubscriptionAsync(
+        ApiTestFactory factory,
+        Guid userId,
+        bool isExpired = false)
+    {
+        var plan = new SubscriptionPlan("Test", "Test plan", 1, "USD", 30);
+        var order = new SubscriptionOrder(userId, plan);
+        var subscription = new UserSubscription(
+            userId,
+            plan.Id,
+            order.Id,
+            plan.Name,
+            plan.Currency,
+            plan.Price,
+            plan.DurationDays);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+        db.SubscriptionPlans.Add(plan);
+        db.SubscriptionOrders.Add(order);
+        db.UserSubscriptions.Add(subscription);
+        await db.SaveChangesAsync();
+
+        if (isExpired)
+        {
+            db.Entry(subscription).Property(item => item.EndsAt).CurrentValue = DateTimeOffset.UtcNow.AddSeconds(-1);
+            await db.SaveChangesAsync();
+        }
+
+        return subscription.Id;
+    }
+
+    private static async Task SeedPlanAsync(ApiTestFactory factory)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+        db.SubscriptionPlans.Add(new SubscriptionPlan("Available", "Available plan", 5, "USD", 30));
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task AssertSubscriptionRequiredAsync(
+        HttpResponseMessage response,
+        bool requiresAuthentication)
+    {
+        Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
+        using var problem = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        var root = problem.RootElement;
+        Assert.Equal("subscription-required", root.GetProperty("type").GetString());
+        Assert.Equal("subscription-required", root.GetProperty("code").GetString());
+        Assert.Equal(requiresAuthentication, root.GetProperty("requiresAuthentication").GetBoolean());
+        Assert.True(root.GetProperty("availablePlans").GetArrayLength() > 0);
     }
 
     private static async Task SignInAsync(HttpClient client)

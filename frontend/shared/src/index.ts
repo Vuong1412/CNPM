@@ -7,7 +7,8 @@ export type {
   AdminDashboard,
   AdminSubscriptionOrder,
   SubscriptionOrder,
-  SubscriptionPlan
+  SubscriptionPlan,
+  UserSubscription
 } from "./types/commerce";
 export type { AdminLocationReview, LocationReview } from "./types/review";
 export type { Language } from "./types/language";

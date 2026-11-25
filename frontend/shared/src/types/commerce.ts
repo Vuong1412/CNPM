@@ -20,6 +20,14 @@ export interface SubscriptionOrder {
   reviewNote: string | null;
 }
 
+export interface UserSubscription {
+  id: string;
+  planName: string;
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+}
+
 export interface AdminSubscriptionOrder extends Omit<SubscriptionOrder, "planId"> {
   userEmail: string;
 }

@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QOL.Application.Subscriptions;
 using QOL.Domain.Entities;
 using QOL.Infrastructure.Persistence;
 
@@ -18,34 +19,37 @@ public static class AudioEndpoints
     public static void MapAudioEndpoints(this WebApplication app, string audioDirectory)
     {
         var publicAudio = app.MapGroup("/api/locations/{locationId:guid}/audio")
-            .WithTags("Audio")
-            .RequireAuthorization();
+            .WithTags("Audio");
 
         publicAudio.MapGet("/", async Task<IResult> (
             Guid locationId,
             string? languageCode,
             ClaimsPrincipal principal,
             QolDbContext db,
+            ISubscriptionAccessService subscriptionAccess,
             CancellationToken cancellationToken) =>
         {
-            if (!Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            var isAdmin = principal.IsInRole("Admin");
+            var locationIsActive = await db.Locations
+                .AsNoTracking()
+                .AnyAsync(location => location.Id == locationId && location.IsActive, cancellationToken);
+            if (!locationIsActive)
             {
-                return TypedResults.Unauthorized();
+                return TypedResults.NotFound();
             }
 
-            var now = DateTimeOffset.UtcNow;
-            var hasActiveSubscription = await db.UserSubscriptions.AnyAsync(
-                subscription => subscription.UserId == userId &&
-                    subscription.IsActive &&
-                    subscription.StartsAt <= now &&
-                    subscription.EndsAt > now,
-                cancellationToken);
-            if (!hasActiveSubscription)
+            if (!isAdmin)
             {
-                return TypedResults.Problem(
-                    statusCode: StatusCodes.Status403Forbidden,
-                    title: "Active subscription required",
-                    detail: "An active subscription is required to listen to audio guides.");
+                var userId = Guid.TryParse(
+                    principal.FindFirstValue(ClaimTypes.NameIdentifier),
+                    out var parsedUserId)
+                    ? parsedUserId
+                    : (Guid?)null;
+                var access = await subscriptionAccess.CheckAccessAsync(userId, cancellationToken);
+                if (!access.HasAccess)
+                {
+                    return SubscriptionRequired(access, userId is null);
+                }
             }
 
             var query = db.AudioFiles
@@ -82,12 +86,15 @@ public static class AudioEndpoints
         })
         .WithName("GetLocationAudio")
         .WithSummary("List published audio guides for a destination")
-        .Produces<AudioResponse[]>();
+        .Produces<AudioResponse[]>()
+        .ProducesProblem(StatusCodes.Status402PaymentRequired)
+        .Produces(StatusCodes.Status404NotFound);
 
         app.MapGet("/media/audio/{fileName}", async Task<IResult> (
             string fileName,
             ClaimsPrincipal principal,
             QolDbContext db,
+            ISubscriptionAccessService subscriptionAccess,
             CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(fileName) ||
@@ -114,23 +121,15 @@ public static class AudioEndpoints
 
             if (!isAdmin)
             {
-                if (!Guid.TryParse(
-                        principal.FindFirstValue(ClaimTypes.NameIdentifier),
-                        out var userId))
+                var userId = Guid.TryParse(
+                    principal.FindFirstValue(ClaimTypes.NameIdentifier),
+                    out var parsedUserId)
+                    ? parsedUserId
+                    : (Guid?)null;
+                var access = await subscriptionAccess.CheckAccessAsync(userId, cancellationToken);
+                if (!access.HasAccess)
                 {
-                    return TypedResults.NotFound();
-                }
-
-                var now = DateTimeOffset.UtcNow;
-                var hasActiveSubscription = await db.UserSubscriptions.AnyAsync(
-                    subscription => subscription.UserId == userId &&
-                        subscription.IsActive &&
-                        subscription.StartsAt <= now &&
-                        subscription.EndsAt > now,
-                    cancellationToken);
-                if (!hasActiveSubscription)
-                {
-                    return TypedResults.NotFound();
+                    return SubscriptionRequired(access, userId is null);
                 }
             }
 
@@ -161,6 +160,7 @@ public static class AudioEndpoints
         .WithName("GetAudioMedia")
         .WithSummary("Stream audio after checking its publication status")
         .Produces(StatusCodes.Status200OK)
+        .ProducesProblem(StatusCodes.Status402PaymentRequired)
         .Produces(StatusCodes.Status404NotFound);
 
         var adminAudio = app.MapGroup("/api/admin/locations/{locationId:guid}/audio")
@@ -478,6 +478,23 @@ public static class AudioEndpoints
         .Produces(StatusCodes.Status404NotFound)
         .ProducesValidationProblem();
     }
+
+    private static IResult SubscriptionRequired(
+        SubscriptionAccessResult access,
+        bool requiresAuthentication) =>
+        Results.Problem(
+            type: "subscription-required",
+            title: "Subscription required",
+            statusCode: StatusCodes.Status402PaymentRequired,
+            detail: requiresAuthentication
+                ? "Sign in and purchase an active subscription to listen to audio guides."
+                : "An active subscription is required to listen to audio guides.",
+            extensions: new Dictionary<string, object?>
+            {
+                ["code"] = "subscription-required",
+                ["requiresAuthentication"] = requiresAuthentication,
+                ["availablePlans"] = access.AvailablePlans
+            });
 
     private static async Task<AudioResponse> ToResponseAsync(
         QolDbContext db,

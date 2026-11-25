@@ -4,6 +4,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QOL.Application.Subscriptions;
 using QOL.Domain.Entities;
 using QOL.Infrastructure.Persistence;
 
@@ -289,7 +290,7 @@ public static class CommerceEndpoints
 
         app.MapGet("/api/me/subscriptions", async Task<IResult> (
             ClaimsPrincipal principal,
-            QolDbContext db,
+            ISubscriptionAccessService subscriptionAccess,
             CancellationToken cancellationToken) =>
         {
             if (!TryGetUserId(principal, out var userId))
@@ -297,18 +298,17 @@ public static class CommerceEndpoints
                 return TypedResults.Unauthorized();
             }
 
-            var now = DateTimeOffset.UtcNow;
-            var subscriptions = await db.UserSubscriptions
-                .AsNoTracking()
-                .Where(subscription => subscription.UserId == userId)
-                .OrderByDescending(subscription => subscription.StartsAt)
+            var userSubscriptions = await subscriptionAccess.GetUserSubscriptionsAsync(
+                userId,
+                cancellationToken);
+            var subscriptions = userSubscriptions
                 .Select(subscription => new UserSubscriptionResponse(
                     subscription.Id,
                     subscription.PlanName,
                     subscription.StartsAt,
                     subscription.EndsAt,
-                    subscription.IsActive && subscription.EndsAt > now))
-                .ToArrayAsync(cancellationToken);
+                    subscription.IsActive))
+                .ToArray();
             return TypedResults.Ok(subscriptions);
         })
         .RequireAuthorization()

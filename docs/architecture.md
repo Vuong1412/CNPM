@@ -45,9 +45,9 @@ Infrastructure must not be referenced directly from Domain or Application code.
 2. The system prevents duplicate pending orders for the same user and plan.
 3. An administrator verifies or rejects the order.
 4. Verification creates a `UserSubscription` with the plan duration.
-5. Active audio access requires a subscription whose start time has arrived and whose end time is in the future.
+5. Active audio access requires an active subscription whose start time has arrived and whose end time is in the future. `ISubscriptionAccessService` applies the domain expiry rule and persists expired subscriptions.
 
-Audio media keeps its `/media/audio/{fileName}` URL, but the API streams it only when its audio and location are active and the requesting user has a current subscription. Administrators may preview hidden audio. WAV duration is derived from its RIFF chunks; MP3, OGG, and M4A use the submitted duration with a 1-hour maximum because the current implementation does not parse those formats.
+Audio media keeps its `/media/audio/{fileName}` URL. Inactive audio or locations return 404 to regular users; anonymous users and users without a current subscription receive 402 ProblemDetails with `type: "subscription-required"` and the available plans. Administrators bypass subscription checks and may preview hidden audio. WAV duration is derived from its RIFF chunks; MP3, OGG, and M4A use the submitted duration with a 1-hour maximum because the current implementation does not parse those formats.
 
 Audio deletion preserves listening history: records with history are hidden, while records without history and their files are deleted. File replacement writes and validates a new file before updating the database, then removes the previous file. The admin orphan-cleanup endpoint supports a dry-run query flag and only scans supported audio extensions in the configured storage directory.
 
