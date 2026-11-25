@@ -1100,6 +1100,7 @@ main {
 .admin-create-form label,
 .admin-edit-form label,
 .audio-upload-form label,
+.audio-replace-form label,
 .audio-location-select {
   display: grid;
   gap: 0.45rem;
@@ -1117,6 +1118,7 @@ main {
 .audio-upload-form textarea,
 .audio-edit-form input,
 .audio-edit-form textarea,
+.audio-replace-form input,
 .audio-location-select select {
   width: 100%;
   min-height: 44px;
@@ -1387,6 +1389,21 @@ main {
 .audio-edit-form {
   display: grid;
   gap: 0.8rem;
+}
+
+.audio-replace-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.8rem;
+}
+
+.audio-replace-form label {
+  display: grid;
+  gap: 0.45rem;
+  color: #455149;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .audio-edit-form label {
@@ -2116,6 +2133,7 @@ main {
   .admin-create-form,
   .admin-edit-form,
   .audio-upload-form,
+  .audio-replace-form,
   .plan-admin-form {
     grid-template-columns: 1fr;
   }

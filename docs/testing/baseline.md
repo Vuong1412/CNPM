@@ -19,3 +19,9 @@ Build frontend tạo 99 modules, JavaScript bundle 406.10 kB (123.86 kB gzip) v�
 - Đây là baseline biên dịch và kiểm thử tự động; chưa chứng minh kết nối với một SQL Server sạch hoặc triển khai production.
 - `--no-restore` dùng các gói đã được restore sẵn trong workspace.
 - Generated output như `bin/`, `obj/`, `dist/`, `.vs/`, `node_modules/` và media runtime không thuộc source submission.
+
+## Kết quả sau P1/P2
+
+- `dotnet build QOL.sln -c Release --no-restore`: thành công, 0 warning, 0 error.
+- `dotnet test QOL.sln -c Release --no-restore`: thành công, 19 passed, 0 failed, 0 skipped; có API tests cho account bị khóa, media/subscription, WAV duration, xóa/thay audio và dọn tệp mồ côi.
+- `npm.cmd --prefix frontend run build`: thành công; TypeScript và Vite production build hoàn tất.

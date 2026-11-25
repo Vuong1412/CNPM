@@ -87,6 +87,15 @@ export function createApiClient({ baseUrl }: ApiClientOptions) {
         signal
       });
     },
+    async putForm<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
+      const requestToken = await ensureAntiforgeryToken(signal);
+      return request<T>(path, {
+        method: "PUT",
+        headers: { "X-CSRF-TOKEN": requestToken },
+        body,
+        signal
+      });
+    },
     async put<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
       const requestToken = await ensureAntiforgeryToken(signal);
       return request<T>(path, {

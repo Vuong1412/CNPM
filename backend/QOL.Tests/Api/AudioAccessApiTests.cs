@@ -149,6 +149,115 @@ public sealed class AudioAccessApiTests
         Assert.Equal(2, createdAudio.DurationSeconds);
     }
 
+    [Fact]
+    public async Task DeleteRemovesAudioWithoutHistoryAndOnlyHidesAudioWithHistory()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        var user = await SeedUserAsync(factory, isAdmin: true);
+        var (locationWithoutHistory, _, audioWithoutHistory) = await SeedAudioAsync(factory, isActive: true);
+        var (locationWithHistory, languageWithHistory, audioWithHistory) =
+            await SeedAudioAsync(factory, isActive: true);
+        var fileWithoutHistory = Path.Combine(factory.AudioDirectory, Path.GetFileName(audioWithoutHistory.AudioUrl));
+        var fileWithHistory = Path.Combine(factory.AudioDirectory, Path.GetFileName(audioWithHistory.AudioUrl));
+        await File.WriteAllBytesAsync(fileWithoutHistory, [1]);
+        await File.WriteAllBytesAsync(fileWithHistory, [2]);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+            db.ListeningHistory.Add(new ListeningHistory(
+                user.Id,
+                locationWithHistory.Id,
+                audioWithHistory.Id,
+                languageWithHistory.Id));
+            await db.SaveChangesAsync();
+        }
+
+        await SignInAsync(client);
+        var deleteWithoutHistory = await DeleteWithAntiforgeryAsync(
+            client,
+            $"/api/admin/locations/{locationWithoutHistory.Id}/audio/{audioWithoutHistory.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteWithoutHistory.StatusCode);
+        Assert.False(File.Exists(fileWithoutHistory));
+
+        var deleteWithHistory = await DeleteWithAntiforgeryAsync(
+            client,
+            $"/api/admin/locations/{locationWithHistory.Id}/audio/{audioWithHistory.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteWithHistory.StatusCode);
+        Assert.True(File.Exists(fileWithHistory));
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<QolDbContext>();
+        Assert.False(await verifyDb.AudioFiles.AnyAsync(item => item.Id == audioWithoutHistory.Id));
+        Assert.False((await verifyDb.AudioFiles.SingleAsync(item => item.Id == audioWithHistory.Id)).IsActive);
+        Assert.True(await verifyDb.ListeningHistory.AnyAsync(item => item.AudioId == audioWithHistory.Id));
+    }
+
+    [Fact]
+    public async Task ReplaceAudioDeletesOldFileOnlyAfterNewFileIsSaved()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        await SeedUserAsync(factory, isAdmin: true);
+        var (location, _, audio) = await SeedAudioAsync(factory, isActive: true);
+        var oldFilePath = Path.Combine(factory.AudioDirectory, Path.GetFileName(audio.AudioUrl));
+        await File.WriteAllBytesAsync(oldFilePath, [1, 2, 3]);
+        await SignInAsync(client);
+
+        var replacementResponse = await ReplaceAudioAsync(
+            client,
+            location.Id,
+            audio.Id,
+            CreatePcmWav(2),
+            "replacement.wav",
+            900);
+        Assert.Equal(HttpStatusCode.OK, replacementResponse.StatusCode);
+        var replacement = await replacementResponse.Content.ReadFromJsonAsync<AudioResponse>();
+        Assert.NotNull(replacement);
+        Assert.Equal(2, replacement.DurationSeconds);
+        Assert.False(File.Exists(oldFilePath));
+        var replacementFilePath = Path.Combine(factory.AudioDirectory, Path.GetFileName(replacement.AudioUrl));
+        Assert.True(File.Exists(replacementFilePath));
+
+        var invalidReplacementResponse = await ReplaceAudioAsync(
+            client,
+            location.Id,
+            audio.Id,
+            [1, 2, 3],
+            "invalid.wav",
+            2);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidReplacementResponse.StatusCode);
+        Assert.True(File.Exists(replacementFilePath));
+    }
+
+    [Fact]
+    public async Task OrphanAudioCleanupSupportsDryRunAndDeletion()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        await SeedUserAsync(factory, isAdmin: true);
+        await SignInAsync(client);
+        var orphanPath = Path.Combine(factory.AudioDirectory, "orphan.wav");
+        await File.WriteAllBytesAsync(orphanPath, [1, 2, 3]);
+
+        var dryRun = await CleanupAudioAsync(client, dryRun: true);
+        Assert.Equal(HttpStatusCode.OK, dryRun.StatusCode);
+        Assert.True(File.Exists(orphanPath));
+        var dryRunResult = await dryRun.Content.ReadFromJsonAsync<AudioOrphanCleanupResponse>();
+        Assert.NotNull(dryRunResult);
+        Assert.True(dryRunResult.DryRun);
+        Assert.Equal(1, dryRunResult.Count);
+
+        var cleanup = await CleanupAudioAsync(client, dryRun: false);
+        Assert.Equal(HttpStatusCode.OK, cleanup.StatusCode);
+        Assert.False(File.Exists(orphanPath));
+        var cleanupResult = await cleanup.Content.ReadFromJsonAsync<AudioOrphanCleanupResponse>();
+        Assert.NotNull(cleanupResult);
+        Assert.False(cleanupResult.DryRun);
+        Assert.Equal(1, cleanupResult.Count);
+    }
+
     private static async Task<User> SeedUserAsync(ApiTestFactory factory, bool isAdmin = false)
     {
         var user = new User("test@example.com", "Test User");
@@ -169,7 +278,8 @@ public sealed class AudioAccessApiTests
         bool isActive)
     {
         var location = new Location("Test destination", "Test address");
-        var language = new Language("zz", "Test language", "Test language");
+        var languageCode = $"t{Guid.NewGuid():N}"[..10];
+        var language = new Language(languageCode, "Test language", "Test language");
         var audio = new AudioFile(
             location.Id,
             language.Id,
@@ -208,6 +318,45 @@ public sealed class AudioAccessApiTests
         var antiforgery = await client.GetFromJsonAsync<AntiforgeryResponse>("/api/auth/antiforgery");
         Assert.NotNull(antiforgery);
         return antiforgery.RequestToken;
+    }
+
+    private static async Task<HttpResponseMessage> DeleteWithAntiforgeryAsync(
+        HttpClient client,
+        string path)
+    {
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", await GetAntiforgeryTokenAsync(client));
+        var response = await client.DeleteAsync(path);
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        return response;
+    }
+
+    private static async Task<HttpResponseMessage> ReplaceAudioAsync(
+        HttpClient client,
+        Guid locationId,
+        Guid audioId,
+        byte[] fileBytes,
+        string fileName,
+        int durationSeconds)
+    {
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(durationSeconds.ToString()), "DurationSeconds");
+        form.Add(new ByteArrayContent(fileBytes), "File", fileName);
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", await GetAntiforgeryTokenAsync(client));
+        var response = await client.PutAsync(
+            $"/api/admin/locations/{locationId}/audio/{audioId}/file",
+            form);
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        return response;
+    }
+
+    private static async Task<HttpResponseMessage> CleanupAudioAsync(HttpClient client, bool dryRun)
+    {
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", await GetAntiforgeryTokenAsync(client));
+        var response = await client.PostAsJsonAsync(
+            $"/api/admin/audio/cleanup?dryRun={dryRun.ToString().ToLowerInvariant()}",
+            new { });
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        return response;
     }
 
     private static byte[] CreatePcmWav(int durationSeconds)

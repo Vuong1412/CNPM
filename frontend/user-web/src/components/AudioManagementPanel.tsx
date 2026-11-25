@@ -33,12 +33,20 @@ export function AudioManagementPanel({
   const [durationSeconds, setDurationSeconds] = useState("60");
   const [file, setFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [replacementInputKey, setReplacementInputKey] = useState(0);
   const [editingAudioId, setEditingAudioId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editTranscript, setEditTranscript] = useState("");
+  const [replacementFiles, setReplacementFiles] = useState<Record<string, File>>({});
+  const [replacementDurations, setReplacementDurations] = useState<Record<string, string>>({});
   const [audioGuides, setAudioGuides] = useState<AudioGuide[]>([]);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<{
+    dryRun: boolean;
+    count: number;
+    fileNames: string[];
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -167,6 +175,78 @@ export function AudioManagementPanel({
     }
   }
 
+  async function replaceAudioFile(guide: AudioGuide) {
+    const replacementFile = replacementFiles[guide.id];
+    if (!locationId || !replacementFile) {
+      setError(t("audio.fileRequired"));
+      return;
+    }
+
+    if (!window.confirm(t("audio.confirmReplace", { title: guide.title }))) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("DurationSeconds", replacementDurations[guide.id] ?? String(guide.durationSeconds));
+    formData.append("File", replacementFile);
+    setIsSaving(true);
+    setError(null);
+    try {
+      await apiClient.putForm<AudioGuide>(
+        `admin/locations/${encodeURIComponent(locationId)}/audio/${encodeURIComponent(guide.id)}/file`,
+        formData
+      );
+      setReplacementFiles({});
+      setReplacementDurations({});
+      setReplacementInputKey((key) => key + 1);
+      await loadAudio();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("audio.saveError"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function deleteAudio(guide: AudioGuide) {
+    if (!locationId || !window.confirm(t("audio.confirmDelete", { title: guide.title }))) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      await apiClient.delete<void>(
+        `admin/locations/${encodeURIComponent(locationId)}/audio/${encodeURIComponent(guide.id)}`
+      );
+      await loadAudio();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("audio.saveError"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function cleanupOrphanAudio(dryRun: boolean) {
+    if (!dryRun && !window.confirm(t("audio.confirmCleanup"))) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      const result = await apiClient.post<{
+        dryRun: boolean;
+        count: number;
+        fileNames: string[];
+      }>(`admin/audio/cleanup?dryRun=${dryRun}`, {});
+      setCleanupResult(result);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("audio.saveError"));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <div className="admin-panel">
       <div className="admin-panel-heading">
@@ -232,7 +312,7 @@ export function AudioManagementPanel({
             <label>
               {t("audio.duration")}
               <input
-                max={86400}
+                max={3600}
                 min={1}
                 onChange={(event) => setDurationSeconds(event.target.value)}
                 required
@@ -264,6 +344,32 @@ export function AudioManagementPanel({
       )}
 
       {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="activity-actions">
+        <button
+          className="button-secondary"
+          disabled={isSaving}
+          onClick={() => void cleanupOrphanAudio(true)}
+          type="button"
+        >
+          {t("audio.cleanupDryRun")}
+        </button>
+        <button
+          className="button-danger"
+          disabled={isSaving}
+          onClick={() => void cleanupOrphanAudio(false)}
+          type="button"
+        >
+          {t("audio.cleanupExecute")}
+        </button>
+      </div>
+      {cleanupResult && (
+        <p role="status">
+          {t(cleanupResult.dryRun ? "audio.cleanupPreview" : "audio.cleanupComplete", {
+            count: cleanupResult.count
+          })}
+          {cleanupResult.fileNames.length > 0 && `: ${cleanupResult.fileNames.join(", ")}`}
+        </p>
+      )}
       <div className="audio-admin-list">
         <h3>{t("audio.savedTracks")}</h3>
         {isLoadingAudio && <p role="status">{t("common.loading")}</p>}
@@ -332,10 +438,58 @@ export function AudioManagementPanel({
                   </button>
                   <button
                     className={guide.isActive ? "button-danger" : "button-secondary"}
+                    disabled={isSaving}
                     onClick={() => void toggleVisibility(guide)}
                     type="button"
                   >
                     {t(guide.isActive ? "audio.hide" : "audio.publish")}
+                  </button>
+                  <button
+                    className="button-danger"
+                    disabled={isSaving}
+                    onClick={() => void deleteAudio(guide)}
+                    type="button"
+                  >
+                    {t("audio.delete")}
+                  </button>
+                </div>
+                <div className="audio-replace-form">
+                  <label>
+                    {t("audio.replaceFile")}
+                    <input
+                      key={`${guide.id}-${replacementInputKey}`}
+                      accept=".mp3,.wav,.ogg,.m4a,audio/mpeg,audio/wav,audio/ogg,audio/mp4"
+                      onChange={(event) => {
+                        const selected = event.target.files?.[0];
+                        if (selected) {
+                          setReplacementFiles((current) => ({ ...current, [guide.id]: selected }));
+                        }
+                      }}
+                      type="file"
+                    />
+                  </label>
+                  <label>
+                    {t("audio.duration")}
+                    <input
+                      max={3600}
+                      min={1}
+                      onChange={(event) =>
+                        setReplacementDurations((current) => ({
+                          ...current,
+                          [guide.id]: event.target.value
+                        }))
+                      }
+                      type="number"
+                      value={replacementDurations[guide.id] ?? String(guide.durationSeconds)}
+                    />
+                  </label>
+                  <button
+                    className="button-secondary"
+                    disabled={isSaving || !replacementFiles[guide.id]}
+                    onClick={() => void replaceAudioFile(guide)}
+                    type="button"
+                  >
+                    {isSaving ? t("auth.working") : t("audio.replace")}
                   </button>
                 </div>
               </>

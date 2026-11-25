@@ -49,6 +49,8 @@ Infrastructure must not be referenced directly from Domain or Application code.
 
 Audio media keeps its `/media/audio/{fileName}` URL, but the API streams it only when its audio and location are active and the requesting user has a current subscription. Administrators may preview hidden audio. WAV duration is derived from its RIFF chunks; MP3, OGG, and M4A use the submitted duration with a 1-hour maximum because the current implementation does not parse those formats.
 
+Audio deletion preserves listening history: records with history are hidden, while records without history and their files are deleted. File replacement writes and validates a new file before updating the database, then removes the previous file. The admin orphan-cleanup endpoint supports a dry-run query flag and only scans supported audio extensions in the configured storage directory.
+
 Payment providers and external emails must be isolated behind application interfaces before production integration.
 
 ## Testing strategy

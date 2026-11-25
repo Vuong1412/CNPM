@@ -68,6 +68,22 @@ public sealed class AudioFile
 
     public void SetActive(bool isActive) => IsActive = isActive;
 
+    public void ReplaceFile(string audioUrl, int durationSeconds)
+    {
+        if (string.IsNullOrWhiteSpace(audioUrl) || audioUrl.Length > 2048)
+        {
+            throw new ArgumentException("Audio URL must be between 1 and 2048 characters.", nameof(audioUrl));
+        }
+
+        if (durationSeconds <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(durationSeconds), "Audio duration must be positive.");
+        }
+
+        AudioUrl = audioUrl.Trim();
+        DurationSeconds = durationSeconds;
+    }
+
     public Guid Id { get; private set; }
     public Guid LocationId { get; private set; }
     public Guid LanguageId { get; private set; }

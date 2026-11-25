@@ -63,6 +63,8 @@ Mở `http://localhost:5173/explore`. API trong Compose chạy ở `http://local
 
 Trang chủ User Web có phần giới thiệu, tìm kiếm địa điểm, ngôn ngữ và lối vào trang gói dịch vụ. Danh sách địa điểm trên trang chủ và trang Khám phá được tải từ API; hình minh họa dùng gradient nội bộ, không tải ảnh Unsplash. Admin nhập tiêu đề, bản dịch và tệp audio (MP3/WAV/OGG/M4A tối đa 20 MB) tại `/admin`; tệp được lưu cục bộ trong `backend\QOL.API\App_Data\audio`. WAV được đo thời lượng từ RIFF header; các định dạng MP3/OGG/M4A dùng thời lượng khai báo bị giới hạn tối đa một giờ. URL `/media/audio/{fileName}` được kiểm tra trạng thái audio, địa điểm và subscription còn hạn trước khi phát; Admin vẫn có thể nghe thử nội dung đã ẩn. Người dùng phải đăng nhập và có subscription còn hạn để lấy danh sách audio; thiếu gói sẽ nhận HTTP 403. Gói/đơn hàng được quản lý tại `/plans` và `/orders`; đơn luôn Pending cho tới khi Admin xác minh thủ công.
 
+Trong `/admin`, có thể thay tệp audio; tệp cũ chỉ bị xóa sau khi DB lưu tệp mới thành công. Xóa audio sẽ xóa cả bản ghi và tệp nếu chưa có lịch sử nghe; nếu có lịch sử, audio chỉ bị ẩn để giữ nguyên tham chiếu. Công cụ "Preview orphan cleanup" liệt kê các tệp không còn bản ghi; chỉ nút xóa mới dọn chúng. API tương ứng là `POST /api/admin/audio/cleanup?dryRun=true` để chạy thử và `dryRun=false` để xóa.
+
 ## Chạy frontend
 
 Cần Node.js 20.19+ hoặc 22.12+.

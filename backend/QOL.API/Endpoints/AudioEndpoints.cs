@@ -4,7 +4,6 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
 using QOL.Domain.Entities;
 using QOL.Infrastructure.Persistence;
 
@@ -135,7 +134,7 @@ public static class AudioEndpoints
                 }
             }
 
-            var root = Path.GetFullPath(audioDirectory) + Path.DirectorySeparatorChar;
+            var root = GetAudioDirectoryRoot(audioDirectory);
             var filePath = Path.GetFullPath(Path.Combine(audioDirectory, fileName));
             if (!filePath.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(filePath))
             {
@@ -202,26 +201,8 @@ public static class AudioEndpoints
             Guid locationId,
             [FromForm] UploadAudioRequest request,
             QolDbContext db,
-            IWebHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
-            if (request.File.Length is <= 0 or > MaximumAudioSize)
-            {
-                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    [nameof(request.File)] = ["Audio files must be no larger than 20 MB."]
-                });
-            }
-
-            var extension = Path.GetExtension(request.File.FileName).ToLowerInvariant();
-            if (!IsSupportedAudio(extension))
-            {
-                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    [nameof(request.File)] = ["Upload an MP3, WAV, OGG, or M4A audio file."]
-                });
-            }
-
             if (!await db.Locations.AnyAsync(
                     location => location.Id == locationId && location.IsActive,
                     cancellationToken))
@@ -239,60 +220,28 @@ public static class AudioEndpoints
                 });
             }
 
-            await using (var signatureStream = request.File.OpenReadStream())
+            var (storedFile, error) = await SaveAudioFileAsync(
+                request.File,
+                request.DurationSeconds,
+                audioDirectory,
+                cancellationToken);
+            if (error is not null)
             {
-                var header = new byte[12];
-                var bytesRead = await signatureStream.ReadAsync(header, cancellationToken);
-                if (!HasExpectedSignature(extension, header.AsSpan(0, bytesRead)))
-                {
-                    return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                    {
-                        [nameof(request.File)] = ["The file contents do not match the selected audio format."]
-                    });
-                }
+                return error;
             }
 
-            var fileName = $"{Guid.NewGuid():N}{extension}";
-            var filePath = Path.Combine(audioDirectory, fileName);
-            Directory.CreateDirectory(audioDirectory);
+            var savedFile = storedFile
+                ?? throw new InvalidOperationException("Audio storage returned neither a file nor an error.");
             var databaseSaved = false;
             try
             {
-                await using (var destination = new FileStream(
-                    filePath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    bufferSize: 81920,
-                    useAsync: true))
-                {
-                    await request.File.CopyToAsync(destination, cancellationToken);
-                }
-
-                var durationSeconds = extension == ".wav"
-                    ? ReadWavDurationSeconds(filePath)
-                    : request.DurationSeconds;
-                if (durationSeconds is null or <= 0 or > MaximumAudioDurationSeconds)
-                {
-                    File.Delete(filePath);
-                    return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                    {
-                        [nameof(request.File)] =
-                        [
-                            extension == ".wav"
-                                ? "The WAV file has no valid duration or exceeds one hour."
-                                : "Audio duration must be between 1 second and 1 hour."
-                        ]
-                    });
-                }
-
                 var audio = new AudioFile(
                     locationId,
                     request.LanguageId,
                     request.Title,
                     request.Transcript,
-                    $"/media/audio/{fileName}",
-                    durationSeconds.Value);
+                    savedFile.AudioUrl,
+                    savedFile.DurationSeconds);
                 db.AudioFiles.Add(audio);
                 await db.SaveChangesAsync(cancellationToken);
                 databaseSaved = true;
@@ -303,9 +252,9 @@ public static class AudioEndpoints
             }
             catch
             {
-                if (!databaseSaved && File.Exists(filePath))
+                if (!databaseSaved && File.Exists(savedFile.FilePath))
                 {
-                    File.Delete(filePath);
+                    File.Delete(savedFile.FilePath);
                 }
 
                 throw;
@@ -318,6 +267,72 @@ public static class AudioEndpoints
         .Produces<AudioResponse>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status404NotFound);
+
+        adminAudio.MapPut("/{audioId:guid}/file", async Task<IResult> (
+            Guid locationId,
+            Guid audioId,
+            [FromForm] ReplaceAudioFileRequest request,
+            QolDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var audio = await db.AudioFiles.SingleOrDefaultAsync(
+                item => item.Id == audioId && item.LocationId == locationId,
+                cancellationToken);
+            if (audio is null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            var oldFilePath = GetAudioFilePath(audio.AudioUrl, audioDirectory);
+            if (oldFilePath is null)
+            {
+                return TypedResults.Problem(
+                    statusCode: StatusCodes.Status500InternalServerError,
+                    title: "Stored audio path is invalid");
+            }
+
+            var (storedFile, error) = await SaveAudioFileAsync(
+                request.File,
+                request.DurationSeconds,
+                audioDirectory,
+                cancellationToken);
+            if (error is not null)
+            {
+                return error;
+            }
+
+            var savedFile = storedFile
+                ?? throw new InvalidOperationException("Audio storage returned neither a file nor an error.");
+            try
+            {
+                audio.ReplaceFile(savedFile.AudioUrl, savedFile.DurationSeconds);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch
+            {
+                if (File.Exists(savedFile.FilePath))
+                {
+                    File.Delete(savedFile.FilePath);
+                }
+
+                throw;
+            }
+
+            if (!string.Equals(oldFilePath, savedFile.FilePath, StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(oldFilePath))
+            {
+                File.Delete(oldFilePath);
+            }
+
+            return TypedResults.Ok(await ToResponseAsync(db, audio.Id, cancellationToken));
+        })
+        .WithName("ReplaceAudioFile")
+        .WithSummary("Replace an audio file without changing its guide content")
+        .RequireRateLimiting("upload")
+        .Accepts<ReplaceAudioFileRequest>("multipart/form-data")
+        .Produces<AudioResponse>()
+        .Produces(StatusCodes.Status404NotFound)
+        .ProducesValidationProblem();
 
         adminAudio.MapPut("/{audioId:guid}", async Task<IResult> (
             Guid locationId,
@@ -343,6 +358,98 @@ public static class AudioEndpoints
         .RequireRateLimiting("sensitive-write")
         .Produces<AudioResponse>()
         .Produces(StatusCodes.Status404NotFound)
+        .ProducesValidationProblem();
+
+        adminAudio.MapDelete("/{audioId:guid}", async Task<IResult> (
+            Guid locationId,
+            Guid audioId,
+            QolDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var audio = await db.AudioFiles.SingleOrDefaultAsync(
+                item => item.Id == audioId && item.LocationId == locationId,
+                cancellationToken);
+            if (audio is null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            var filePath = GetAudioFilePath(audio.AudioUrl, audioDirectory);
+            if (filePath is null)
+            {
+                return TypedResults.Problem(
+                    statusCode: StatusCodes.Status500InternalServerError,
+                    title: "Stored audio path is invalid");
+            }
+
+            var hasListeningHistory = await db.ListeningHistory.AnyAsync(
+                history => history.AudioId == audioId,
+                cancellationToken);
+            if (hasListeningHistory)
+            {
+                audio.SetActive(false);
+                await db.SaveChangesAsync(cancellationToken);
+                return TypedResults.NoContent();
+            }
+
+            db.AudioFiles.Remove(audio);
+            await db.SaveChangesAsync(cancellationToken);
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+
+            return TypedResults.NoContent();
+        })
+        .WithName("DeleteAudio")
+        .WithSummary("Delete audio without history, or hide it when history exists")
+        .RequireRateLimiting("sensitive-write")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        var adminAudioCleanup = app.MapGroup("/api/admin/audio")
+            .WithTags("Administration", "Audio")
+            .RequireAuthorization(policy => policy.RequireRole("Admin"));
+
+        adminAudioCleanup.MapPost("/cleanup", async (
+            [FromQuery] bool dryRun,
+            QolDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var knownUrls = await db.AudioFiles
+                .AsNoTracking()
+                .Select(audio => audio.AudioUrl)
+                .ToArrayAsync(cancellationToken);
+            var knownFiles = knownUrls
+                .Select(url => GetAudioFilePath(url, audioDirectory))
+                .Where(path => path is not null)
+                .Select(path => Path.GetFullPath(path!))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var orphanFiles = Directory.Exists(audioDirectory)
+                ? Directory.EnumerateFiles(audioDirectory)
+                    .Where(path => IsSupportedAudio(Path.GetExtension(path).ToLowerInvariant()))
+                    .Where(path => !knownFiles.Contains(Path.GetFullPath(path)))
+                    .ToArray()
+                : Array.Empty<string>();
+
+            if (!dryRun)
+            {
+                foreach (var orphanFile in orphanFiles)
+                {
+                    File.Delete(orphanFile);
+                }
+            }
+
+            return TypedResults.Ok(new AudioOrphanCleanupResponse(
+                dryRun,
+                orphanFiles.Length,
+                orphanFiles.Select(path => Path.GetFileName(path)!).ToArray()));
+        })
+        .WithName("CleanupOrphanAudioFiles")
+        .WithSummary("List or delete audio files not referenced by audio records")
+        .RequireRateLimiting("sensitive-write")
+        .Produces<AudioOrphanCleanupResponse>()
         .ProducesValidationProblem();
 
         adminAudio.MapPatch("/{audioId:guid}/visibility", async Task<IResult> (
@@ -395,6 +502,128 @@ public static class AudioEndpoints
 
     private static bool IsSupportedAudio(string extension) =>
         extension is ".mp3" or ".wav" or ".ogg" or ".m4a";
+
+    private static async Task<(StoredAudioFile? File, IResult? Error)> SaveAudioFileAsync(
+        IFormFile file,
+        int declaredDurationSeconds,
+        string audioDirectory,
+        CancellationToken cancellationToken)
+    {
+        if (file.Length is <= 0 or > MaximumAudioSize)
+        {
+            return (null, TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(file)] = ["Audio files must be no larger than 20 MB."]
+            }));
+        }
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!IsSupportedAudio(extension))
+        {
+            return (null, TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(file)] = ["Upload an MP3, WAV, OGG, or M4A audio file."]
+            }));
+        }
+
+        await using (var signatureStream = file.OpenReadStream())
+        {
+            var header = new byte[12];
+            var bytesRead = await signatureStream.ReadAsync(header, cancellationToken);
+            if (!HasExpectedSignature(extension, header.AsSpan(0, bytesRead)))
+            {
+                return (null, TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [nameof(file)] = ["The file contents do not match the selected audio format."]
+                }));
+            }
+        }
+
+        Directory.CreateDirectory(audioDirectory);
+        var fileName = $"{Guid.NewGuid():N}{extension}";
+        var filePath = Path.Combine(audioDirectory, fileName);
+        var temporaryPath = $"{filePath}.uploading";
+        var movedToFinalPath = false;
+        try
+        {
+            await using (var destination = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true))
+            {
+                await file.CopyToAsync(destination, cancellationToken);
+            }
+
+            var durationSeconds = extension == ".wav"
+                ? ReadWavDurationSeconds(temporaryPath)
+                : declaredDurationSeconds;
+            if (durationSeconds is null or <= 0 or > MaximumAudioDurationSeconds)
+            {
+                File.Delete(temporaryPath);
+                return (null, TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [nameof(file)] =
+                    [
+                        extension == ".wav"
+                            ? "The WAV file has no valid duration or exceeds one hour."
+                            : "Audio duration must be between 1 second and 1 hour."
+                    ]
+                }));
+            }
+
+            File.Move(temporaryPath, filePath);
+            movedToFinalPath = true;
+            return (new StoredAudioFile(filePath, $"/media/audio/{fileName}", durationSeconds.Value), null);
+        }
+        catch
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+
+            if (movedToFinalPath && File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+
+            throw;
+        }
+    }
+
+    private static string? GetAudioFilePath(string audioUrl, string audioDirectory)
+    {
+        const string mediaPrefix = "/media/audio/";
+        if (!audioUrl.StartsWith(mediaPrefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var fileName = audioUrl[mediaPrefix.Length..];
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            !string.Equals(Path.GetFileName(fileName), fileName, StringComparison.Ordinal) ||
+            !IsSupportedAudio(Path.GetExtension(fileName).ToLowerInvariant()))
+        {
+            return null;
+        }
+
+        var root = GetAudioDirectoryRoot(audioDirectory);
+        var filePath = Path.GetFullPath(Path.Combine(audioDirectory, fileName));
+        return filePath.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+            ? filePath
+            : null;
+    }
+
+    private static string GetAudioDirectoryRoot(string audioDirectory)
+    {
+        var root = Path.GetFullPath(audioDirectory);
+        return root.EndsWith(Path.DirectorySeparatorChar) || root.EndsWith(Path.AltDirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+    }
 
     private static bool HasExpectedSignature(string extension, ReadOnlySpan<byte> header) =>
         extension switch
@@ -467,6 +696,11 @@ public static class AudioEndpoints
         var seconds = ((long)dataSize.Value + byteRate.Value - 1) / byteRate.Value;
         return seconds <= int.MaxValue ? (int)seconds : null;
     }
+
+    private sealed record StoredAudioFile(
+        string FilePath,
+        string AudioUrl,
+        int DurationSeconds);
 }
 
 public sealed record UploadAudioRequest
@@ -487,6 +721,20 @@ public sealed record UploadAudioRequest
     [Required]
     public required IFormFile File { get; init; }
 }
+
+public sealed record ReplaceAudioFileRequest
+{
+    [Required]
+    public required int DurationSeconds { get; init; }
+
+    [Required]
+    public required IFormFile File { get; init; }
+}
+
+public sealed record AudioOrphanCleanupResponse(
+    bool DryRun,
+    int Count,
+    string[] FileNames);
 
 public sealed record UpdateAudioContentRequest
 {
