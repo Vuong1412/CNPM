@@ -8,8 +8,8 @@ tạo, còn các script khác phụ thuộc vào bảng/model/API chưa có. EF 
 trong `backend/QOL.Infrastructure/Migrations/` tiếp tục là nguồn schema duy nhất
 cho ứng dụng hiện tại.
 
-Database local `QOL` đã áp dụng bảy EF Core migrations trước thay đổi Location. Migration mới
-`AddLocationMetadata` là migration thứ tám và cần được áp dụng để triển khai schema hiện tại:
+Database local `QOL` đã áp dụng bảy EF Core migrations trước các thay đổi Location và listening trigger.
+Hai migration mới là migration thứ tám và thứ chín, cần được áp dụng để triển khai schema hiện tại:
 
 - `InitialCreate`
 - `AddAccountRolesAndPasswordHash`
@@ -19,6 +19,7 @@ Database local `QOL` đã áp dụng bảy EF Core migrations trước thay đ�
 - `AddLocationReviews`
 - `AddUserSubscriptions`
 - `AddLocationMetadata`
+- `AddListeningTriggerMethod`
 
 Model EF Core hiện có mười một entity/bảng nghiệp vụ: `Users`, `Locations`, `LocationImages`,
 `Languages`, `AudioFiles`, `Favorites`, `ListeningHistory`, `LocationReviews`,

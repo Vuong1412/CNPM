@@ -38,4 +38,25 @@ public sealed class LocationMigrationTests
             downScript);
         Assert.True(restoreIndex >= 0 && dropStatusIndex > restoreIndex);
     }
+
+    [Fact]
+    public void ListeningTriggerMigrationDefaultsExistingRowsToTap()
+    {
+        var options = new DbContextOptionsBuilder<QolDbContext>()
+            .UseSqlServer("Server=localhost;Database=QOL;User Id=test;Password=test")
+            .Options;
+        using var db = new QolDbContext(options);
+        var migrator = db.GetService<IMigrator>();
+
+        var upScript = migrator.GenerateScript(
+            "20261125162055_AddLocationMetadata",
+            "20261125163649_AddListeningTriggerMethod");
+        Assert.Contains("N'TAP'", upScript);
+        Assert.Contains("[TriggerMethod]", upScript);
+
+        var downScript = migrator.GenerateScript(
+            "20261125163649_AddListeningTriggerMethod",
+            "20261125162055_AddLocationMetadata");
+        Assert.Contains("DROP COLUMN [TriggerMethod]", downScript);
+    }
 }

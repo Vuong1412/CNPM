@@ -1050,6 +1050,117 @@ main {
   margin-top: 2rem;
 }
 
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.map-toolbar p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.map-frame {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+}
+
+.map-frame .leaflet-container {
+  width: 100%;
+  height: min(68vh, 680px);
+  min-height: 420px;
+  background: #e7ece8;
+}
+
+.map-popup {
+  display: grid;
+  min-width: 150px;
+  gap: 0.5rem;
+}
+
+.map-popup > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.map-popup .button-primary {
+  width: fit-content;
+  padding: 0.55rem 0.75rem;
+}
+
+.map-audio-panel {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+.map-audio-panel h2 {
+  margin-top: 0;
+}
+
+.map-audio-panel audio {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.map-audio-unlock-player {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.map-guide-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.map-empty,
+.subscription-notice {
+  padding: 0.9rem 1rem;
+  border: 1px solid #e6d7ac;
+  border-radius: 0.65rem;
+  background: #fff8e6;
+  color: #69521c;
+}
+
+.qol-poi-marker,
+.qol-user-marker {
+  border: 0;
+  background: transparent;
+}
+
+.qol-poi-marker span {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #21865e;
+  box-shadow: 0 2px 8px #18352c66;
+}
+
+.qol-user-marker span {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #2470cf;
+  box-shadow: 0 2px 8px #18352c66;
+}
+
 .location-card {
   display: block;
   overflow: hidden;
@@ -2247,6 +2358,16 @@ main {
   .admin-location-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .map-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .map-frame .leaflet-container {
+    height: 58vh;
+    min-height: 360px;
   }
 
   .admin-location-form .full-row {

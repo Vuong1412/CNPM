@@ -5,6 +5,8 @@ export interface FavoriteSummary {
   createdAt: string;
 }
 
+export type ListeningTriggerMethod = "TAP" | "AUTO_GPS";
+
 export interface ListeningHistoryItem {
   id: string;
   locationId: string;
@@ -16,5 +18,6 @@ export interface ListeningHistoryItem {
   audioDurationSeconds: number;
   durationSeconds: number;
   isCompleted: boolean;
+  triggerMethod: ListeningTriggerMethod;
   listenedAt: string;
 }

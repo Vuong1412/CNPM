@@ -11,6 +11,7 @@ interface SiteLayoutProps {
 const navigation = [
   { to: "/", key: "nav.home" },
   { to: "/explore", key: "nav.explore" },
+  { to: "/map", key: "nav.map" },
   { to: "/languages", key: "nav.languages" },
   { to: "/plans", key: "nav.plans" },
   { to: "/favorites", key: "nav.favorites" }

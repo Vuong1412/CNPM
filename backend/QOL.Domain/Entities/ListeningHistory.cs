@@ -1,5 +1,11 @@
 namespace QOL.Domain.Entities;
 
+public enum ListeningTriggerMethod
+{
+    Tap,
+    AutoGps
+}
+
 public sealed class ListeningHistory
 {
     private ListeningHistory()
@@ -10,7 +16,8 @@ public sealed class ListeningHistory
         Guid userId,
         Guid locationId,
         Guid audioId,
-        Guid languageId)
+        Guid languageId,
+        ListeningTriggerMethod triggerMethod = ListeningTriggerMethod.Tap)
     {
         if (userId == Guid.Empty)
         {
@@ -32,11 +39,17 @@ public sealed class ListeningHistory
             throw new ArgumentException("Language ID cannot be empty.", nameof(languageId));
         }
 
+        if (!Enum.IsDefined(triggerMethod))
+        {
+            throw new ArgumentOutOfRangeException(nameof(triggerMethod));
+        }
+
         Id = Guid.NewGuid();
         UserId = userId;
         LocationId = locationId;
         AudioId = audioId;
         LanguageId = languageId;
+        TriggerMethod = triggerMethod;
         ListenedAt = DateTimeOffset.UtcNow;
     }
 
@@ -59,6 +72,7 @@ public sealed class ListeningHistory
     public DateTimeOffset ListenedAt { get; private set; }
     public int DurationSeconds { get; private set; }
     public bool IsCompleted { get; private set; }
+    public ListeningTriggerMethod TriggerMethod { get; private set; }
     public User User { get; private set; } = null!;
     public Location Location { get; private set; } = null!;
     public AudioFile AudioFile { get; private set; } = null!;

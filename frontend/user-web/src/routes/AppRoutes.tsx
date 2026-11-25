@@ -1,4 +1,6 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { FavoritesPage } from "../pages/FavoritesPage";
 import { HomePage } from "../pages/HomePage";
 import { LanguagesPage } from "../pages/LanguagesPage";
@@ -15,11 +17,28 @@ import { OrdersPage } from "../pages/OrdersPage";
 import { UnauthorizedPage } from "../pages/UnauthorizedPage";
 import { ProtectedRoute } from "./ProtectedRoute";
 
+const MapPage = lazy(() =>
+  import("../pages/MapPage").then(({ MapPage: page }) => ({ default: page }))
+);
+
+function MapPageFallback() {
+  const { t } = useTranslation();
+  return <section className="content-page"><p role="status">{t("common.loading")}</p></section>;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/explore" element={<LocationListPage />} />
+      <Route
+        path="/map"
+        element={(
+          <Suspense fallback={<MapPageFallback />}>
+            <MapPage />
+          </Suspense>
+        )}
+      />
       <Route path="/locations/:id" element={<LocationDetailPage />} />
       <Route path="/languages" element={<LanguagesPage />} />
       <Route path="/favorites" element={<ProtectedRoute><FavoritesPage /></ProtectedRoute>} />

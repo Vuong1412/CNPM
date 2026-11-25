@@ -125,6 +125,46 @@ public sealed class AudioAccessApiTests
     }
 
     [Fact]
+    public async Task ListeningHistoryStoresTapAndAutomaticGpsTriggerMethods()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        var user = await SeedUserAsync(factory);
+        var (_, _, audio) = await SeedAudioAsync(factory, isActive: true);
+        await SignInAsync(client);
+
+        var tapResponse = await StartListeningAsync(client, audio.Id);
+        var gpsResponse = await StartListeningAsync(client, audio.Id, "AUTO_GPS");
+        Assert.True(
+            tapResponse.StatusCode == HttpStatusCode.Created,
+            await tapResponse.Content.ReadAsStringAsync());
+        Assert.True(
+            gpsResponse.StatusCode == HttpStatusCode.Created,
+            await gpsResponse.Content.ReadAsStringAsync());
+
+        using var historyPayload = JsonDocument.Parse(
+            await (await client.GetAsync("/api/me/listening-history")).Content.ReadAsStringAsync());
+        var savedTriggers = historyPayload.RootElement
+            .EnumerateArray()
+            .Select(item => item.GetProperty("triggerMethod").GetString()
+                ?? throw new InvalidOperationException("Listening history trigger method was missing."))
+            .Order()
+            .ToArray();
+        Assert.Equal(["AUTO_GPS", "TAP"], savedTriggers);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+        var methods = await db.ListeningHistory
+            .Where(item => item.UserId == user.Id)
+            .OrderBy(item => item.ListenedAt)
+            .Select(item => item.TriggerMethod)
+            .ToArrayAsync();
+        Assert.Equal(
+            [ListeningTriggerMethod.Tap, ListeningTriggerMethod.AutoGps],
+            methods);
+    }
+
+    [Fact]
     public async Task HiddenAudioCannotBeDownloadedButActiveAudioCan()
     {
         using var factory = new ApiTestFactory();
@@ -534,6 +574,23 @@ public sealed class AudioAccessApiTests
     {
         client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", await GetAntiforgeryTokenAsync(client));
         var response = await client.DeleteAsync(path);
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+        return response;
+    }
+
+    private static async Task<HttpResponseMessage> StartListeningAsync(
+        HttpClient client,
+        Guid audioId,
+        string? triggerMethod = null)
+    {
+        var body = new Dictionary<string, object?> { ["audioId"] = audioId };
+        if (triggerMethod is not null)
+        {
+            body["triggerMethod"] = triggerMethod;
+        }
+
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", await GetAntiforgeryTokenAsync(client));
+        var response = await client.PostAsJsonAsync("/api/me/listening-history", body);
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
         return response;
     }

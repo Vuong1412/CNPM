@@ -137,6 +137,7 @@ public static class UserActivityEndpoints
                     item.AudioFile.DurationSeconds,
                     item.DurationSeconds,
                     item.IsCompleted,
+                    ToTriggerMethodString(item.TriggerMethod),
                     item.ListenedAt))
                 .ToArrayAsync(cancellationToken);
 
@@ -173,7 +174,10 @@ public static class UserActivityEndpoints
                 userId,
                 audio.LocationId,
                 audio.Id,
-                audio.LanguageId);
+                audio.LanguageId,
+                request.TriggerMethod == "AUTO_GPS"
+                    ? ListeningTriggerMethod.AutoGps
+                    : ListeningTriggerMethod.Tap);
             db.ListeningHistory.Add(historyItem);
             await db.SaveChangesAsync(cancellationToken);
 
@@ -233,6 +237,9 @@ public static class UserActivityEndpoints
 
     private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId) =>
         Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
+
+    private static string ToTriggerMethodString(ListeningTriggerMethod method) =>
+        method == ListeningTriggerMethod.AutoGps ? "AUTO_GPS" : "TAP";
 }
 
 public sealed record FavoriteResponse(
@@ -245,6 +252,9 @@ public sealed record StartListeningRequest
 {
     [Required]
     public required Guid AudioId { get; init; }
+
+    [Required, RegularExpression("^(TAP|AUTO_GPS)$")]
+    public string TriggerMethod { get; init; } = "TAP";
 }
 
 public sealed record UpdateListeningProgressRequest
@@ -268,4 +278,5 @@ public sealed record ListeningHistoryResponse(
     int AudioDurationSeconds,
     int DurationSeconds,
     bool IsCompleted,
+    string TriggerMethod,
     DateTimeOffset ListenedAt);

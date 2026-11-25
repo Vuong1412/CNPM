@@ -57,6 +57,10 @@ Audio deletion preserves listening history: records with history are hidden, whi
 
 The `AddLocationMetadata` migration maps legacy `IsActive=true` rows to `ACTIVE` and `false` rows to `INACTIVE` with SQL before dropping the old column. Its `Down` migration restores `IsActive` from `Status`. Existing locations without coordinates remain valid. `LocationImages` stores image metadata and `/media/locations/{fileName}` URLs; uploads accept PNG/JPG/WEBP up to 5 MB, validate the file signature, use GUID file names, and remove newly written files if persistence fails. The frontend uses uploaded images when available and a local SVG illustration otherwise.
 
+`/map` uses Leaflet with OpenStreetMap tiles and a `watchPosition` geolocation hook. The haversine selector chooses the nearest unplayed active POI within its radius, using higher `Priority` to break equal-distance ties. Users can also tap a marker when GPS is denied or unavailable. A one-time “Start tour” gesture attempts to unlock audio autoplay; native player controls remain available if a browser, including iOS Safari, blocks playback. Automatic audio requests are attempted once per POI in a session, and a 402 subscription response stops further automatic retries.
+
+`ListeningHistory.TriggerMethod` is stored as `TAP` or `AUTO_GPS`. Existing history rows receive `TAP` in the `AddListeningTriggerMethod` migration; new listening-session requests default to `TAP` for backward compatibility.
+
 Payment providers and external emails must be isolated behind application interfaces before production integration.
 
 ## Testing strategy

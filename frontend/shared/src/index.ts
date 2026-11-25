@@ -1,7 +1,11 @@
 export { createApiClient } from "./api/apiClient";
 export { ApiError } from "./api/apiClient";
 export type { ApiClientOptions } from "./api/apiClient";
-export type { FavoriteSummary, ListeningHistoryItem } from "./types/activity";
+export type {
+  FavoriteSummary,
+  ListeningHistoryItem,
+  ListeningTriggerMethod
+} from "./types/activity";
 export type { AudioGuide } from "./types/audio";
 export type {
   AdminDashboard,

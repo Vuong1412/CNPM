@@ -143,6 +143,7 @@ public sealed class ModuleEntityTests
 
         Assert.Equal(0, history.DurationSeconds);
         Assert.False(history.IsCompleted);
+        Assert.Equal(ListeningTriggerMethod.Tap, history.TriggerMethod);
 
         history.UpdateProgress(45, false);
 
@@ -153,6 +154,14 @@ public sealed class ModuleEntityTests
 
         Assert.Equal(120, history.DurationSeconds);
         Assert.True(history.IsCompleted);
+
+        var autoStartedHistory = new ListeningHistory(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            ListeningTriggerMethod.AutoGps);
+        Assert.Equal(ListeningTriggerMethod.AutoGps, autoStartedHistory.TriggerMethod);
     }
 
     [Fact]

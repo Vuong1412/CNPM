@@ -183,6 +183,13 @@ namespace QOL.Infrastructure.Migrations
                     b.Property<Guid>("LocationId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("TriggerMethod")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValueSql("N'TAP'");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
