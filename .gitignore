@@ -1,0 +1,41 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# JavaScript / TypeScript
+node_modules/
+**/dist/
+build/
+.vite/
+
+# .NET
+**/bin/
+**/obj/
+TestResults/
+**/browser-tools-key.private.json
+**/*.tsbuildinfo
+
+# IDE and OS
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+QOL.slnLaunch.user
+.DS_Store
+Thumbs.db
+
+# Local data and generated files
+database/Backups/*
+!database/Backups/.gitkeep
+App_Data/audio/*
+!App_Data/audio/.gitkeep
+storage/images/*
+!storage/images/.gitkeep
+storage/audio/*
+!storage/audio/.gitkeep
+storage/documents/*
+!storage/documents/.gitkeep
+backend/QOL.API/App_Data/audio/*
+!backend/QOL.API/App_Data/audio/.gitkeep
+*.log

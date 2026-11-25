@@ -1,0 +1,14 @@
+{
+  "name": "qol-frontend",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "user-web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @qol/user-web"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

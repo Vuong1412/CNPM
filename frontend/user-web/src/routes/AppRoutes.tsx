@@ -1,0 +1,36 @@
+import { Route, Routes } from "react-router-dom";
+import { FavoritesPage } from "../pages/FavoritesPage";
+import { HomePage } from "../pages/HomePage";
+import { LanguagesPage } from "../pages/LanguagesPage";
+import { ListeningHistoryPage } from "../pages/ListeningHistoryPage";
+import { ProfilePage } from "../pages/ProfilePage";
+import { NotFoundPage } from "../pages/NotFoundPage";
+import { AuthPage } from "../pages/AuthPage";
+import { BootstrapAdminPage } from "../pages/BootstrapAdminPage";
+import { AdminPage } from "../pages/AdminPage";
+import { LocationDetailPage } from "../pages/locations/LocationDetailPage";
+import { LocationListPage } from "../pages/locations/LocationListPage";
+import { PlansPage } from "../pages/PlansPage";
+import { OrdersPage } from "../pages/OrdersPage";
+import { ProtectedRoute } from "./ProtectedRoute";
+
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/explore" element={<LocationListPage />} />
+      <Route path="/locations/:id" element={<LocationDetailPage />} />
+      <Route path="/languages" element={<LanguagesPage />} />
+      <Route path="/favorites" element={<ProtectedRoute><FavoritesPage /></ProtectedRoute>} />
+      <Route path="/listening-history" element={<ProtectedRoute><ListeningHistoryPage /></ProtectedRoute>} />
+      <Route path="/plans" element={<PlansPage />} />
+      <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
+      <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+      <Route path="/login" element={<AuthPage mode="login" />} />
+      <Route path="/register" element={<AuthPage mode="register" />} />
+      <Route path="/bootstrap-admin" element={<BootstrapAdminPage />} />
+      <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminPage /></ProtectedRoute>} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  );
+}

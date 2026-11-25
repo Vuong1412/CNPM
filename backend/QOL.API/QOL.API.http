@@ -1,0 +1,189 @@
+@baseUrl = http://localhost:49820
+@email = traveler@example.com
+@password = ChangeThis_Example_2026!
+@locationId = 00000000-0000-0000-0000-000000000001
+@planId = 00000000-0000-0000-0000-000000000002
+@audioId = 00000000-0000-0000-0000-000000000003
+@orderId = 00000000-0000-0000-0000-000000000004
+@historyId = 00000000-0000-0000-0000-000000000005
+@reviewId = 00000000-0000-0000-0000-000000000006
+
+### Public health and API root
+GET {{baseUrl}}/health
+
+### Available languages
+GET {{baseUrl}}/api/languages
+
+### Search destinations
+GET {{baseUrl}}/api/locations?search=Ha%20Long
+
+### Register a user; the API sets an HTTP-only session cookie
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "displayName": "QOL Traveler",
+  "password": "{{password}}"
+}
+
+### Sign in
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "rememberMe": false
+}
+
+### Read the signed-in profile
+GET {{baseUrl}}/api/auth/me
+
+### Update the signed-in profile
+PATCH {{baseUrl}}/api/auth/me
+Content-Type: application/json
+
+{
+  "displayName": "QOL Traveler"
+}
+
+### Create the first administrator (replace the token with the User Secrets value)
+POST {{baseUrl}}/api/auth/bootstrap-admin
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "displayName": "QOL Administrator",
+  "password": "{{password}}",
+  "bootstrapToken": "REPLACE_WITH_LOCAL_USER_SECRET"
+}
+
+### List all destinations, including inactive ones (Admin session required)
+GET {{baseUrl}}/api/admin/locations
+
+### Create a destination (Admin session required)
+POST {{baseUrl}}/api/admin/locations
+Content-Type: application/json
+
+{
+  "name": "Ha Long Bay",
+  "address": "Quang Ninh, Vietnam"
+}
+
+### Update a destination (Admin session required)
+PUT {{baseUrl}}/api/admin/locations/{{locationId}}
+Content-Type: application/json
+
+{
+  "name": "Ha Long Bay",
+  "address": "Quang Ninh, Vietnam"
+}
+
+### Soft-delete a destination (Admin session required)
+DELETE {{baseUrl}}/api/admin/locations/{{locationId}}
+
+### Sign out
+POST {{baseUrl}}/api/auth/logout
+
+### Add a destination to favorites (signed-in user)
+PUT {{baseUrl}}/api/me/favorites/{{locationId}}
+Content-Type: application/json
+
+{}
+
+### List favorites (signed-in user)
+GET {{baseUrl}}/api/me/favorites
+
+### Remove a destination from favorites (signed-in user)
+DELETE {{baseUrl}}/api/me/favorites/{{locationId}}
+
+### List audio content for a destination
+GET {{baseUrl}}/api/locations/{{locationId}}/audio?languageCode=vi
+
+### Start a listening session (signed-in user)
+POST {{baseUrl}}/api/me/listening-history
+Content-Type: application/json
+
+{
+  "audioId": "{{audioId}}"
+}
+
+### Update listening progress (session owner only)
+PATCH {{baseUrl}}/api/me/listening-history/{{historyId}}
+Content-Type: application/json
+
+{
+  "durationSeconds": 60,
+  "isCompleted": true
+}
+
+### List listening history (signed-in user)
+GET {{baseUrl}}/api/me/listening-history
+
+### List available plans
+GET {{baseUrl}}/api/plans
+
+### Create a plan (Admin session required)
+POST {{baseUrl}}/api/admin/plans
+Content-Type: application/json
+
+{
+  "name": "Monthly",
+  "description": "Access to multilingual audio tours for 30 days.",
+  "price": 99000,
+  "currency": "VND",
+  "durationDays": 30
+}
+
+### Create an order (signed-in user; remains Pending)
+POST {{baseUrl}}/api/me/orders
+Content-Type: application/json
+
+{
+  "planId": "{{planId}}"
+}
+
+### List own orders (signed-in user)
+GET {{baseUrl}}/api/me/orders
+
+### Manually verify payment (Admin session required)
+PATCH {{baseUrl}}/api/admin/orders/{{orderId}}/review
+Content-Type: application/json
+
+{
+  "status": "Verified",
+  "note": "Payment confirmed manually."
+}
+
+### Admin dashboard summary
+GET {{baseUrl}}/api/admin/dashboard
+
+### List public reviews for a destination
+GET {{baseUrl}}/api/locations/{{locationId}}/reviews
+
+### Create or update your review (signed-in user)
+PUT {{baseUrl}}/api/me/locations/{{locationId}}/review
+Content-Type: application/json
+
+{
+  "rating": 5,
+  "comment": "A memorable visit."
+}
+
+### Read your review (signed-in user)
+GET {{baseUrl}}/api/me/locations/{{locationId}}/review
+
+### Delete your review (signed-in user)
+DELETE {{baseUrl}}/api/me/locations/{{locationId}}/review
+
+### List reviews for moderation (Admin session required)
+GET {{baseUrl}}/api/admin/reviews
+
+### Hide or show a review (Admin session required)
+PATCH {{baseUrl}}/api/admin/reviews/{{reviewId}}/visibility
+Content-Type: application/json
+
+{
+  "isVisible": false
+}

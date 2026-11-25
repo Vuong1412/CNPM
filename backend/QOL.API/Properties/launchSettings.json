@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "QOL.API": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ConnectionStrings__DefaultConnection": "Server=localhost;Database=QOL;Trusted_Connection=True;TrustServerCertificate=True",
+        "Cors__AllowedOrigins__0": "http://localhost:5173"
+      },
+      "applicationUrl": "https://localhost:49819;http://localhost:49820"
+    }
+  }
+}
