@@ -20,6 +20,111 @@ namespace QOL.Tests.Api;
 public sealed class AudioAccessApiTests
 {
     [Fact]
+    public async Task MigratedActiveLocationIsVisibleWithLocationMetadata()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        var location = new Location(
+            "Legacy active destination",
+            "Legacy address",
+            latitude: 15.8801m,
+            longitude: 108.338m,
+            radiusMeters: 250,
+            originalDescription: "A legacy destination description");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+            db.Locations.Add(location);
+            db.Locations.Add(new Location("Legacy inactive destination", "Hidden address", status: LocationStatus.Inactive));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.GetAsync("/api/locations/");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var locations = payload.RootElement;
+        var item = Assert.Single(locations.EnumerateArray());
+        Assert.Equal(location.Id, item.GetProperty("id").GetGuid());
+        Assert.Equal("ACTIVE", item.GetProperty("status").GetString());
+        Assert.Equal(15.8801m, item.GetProperty("latitude").GetDecimal());
+        Assert.Equal(108.338m, item.GetProperty("longitude").GetDecimal());
+        Assert.Equal(250, item.GetProperty("radiusMeters").GetInt32());
+        Assert.Equal("A legacy destination description", item.GetProperty("originalDescription").GetString());
+    }
+
+    [Fact]
+    public async Task AdminCanUploadAndDeleteSignedLocationImage()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        await SeedUserAsync(factory, isAdmin: true);
+        var (location, _, _) = await SeedAudioAsync(factory, isActive: true);
+        await SignInAsync(client);
+        var imageBytes = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
+        using var form = new MultipartFormDataContent();
+        form.Add(new ByteArrayContent(imageBytes), "File", "view.png");
+        form.Add(new StringContent("Test view"), "AltText");
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", await GetAntiforgeryTokenAsync(client));
+        var upload = await client.PostAsync($"/api/admin/locations/{location.Id}/images", form);
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+
+        Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
+        using var responseJson = JsonDocument.Parse(await upload.Content.ReadAsStringAsync());
+        var imageUrl = responseJson.RootElement.GetProperty("imageUrl").GetString();
+        Assert.NotNull(imageUrl);
+        var imageResponse = await client.GetAsync(imageUrl);
+        Assert.Equal(HttpStatusCode.OK, imageResponse.StatusCode);
+        Assert.Equal(imageBytes, await imageResponse.Content.ReadAsByteArrayAsync());
+
+        var imageId = responseJson.RootElement.GetProperty("id").GetGuid();
+        var deletion = await DeleteWithAntiforgeryAsync(
+            client,
+            $"/api/admin/locations/{location.Id}/images/{imageId}");
+        Assert.Equal(HttpStatusCode.NoContent, deletion.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(imageUrl)).StatusCode);
+    }
+
+    [Fact]
+    public async Task LocationImageUploadRejectsMismatchedSignature()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        await SeedUserAsync(factory, isAdmin: true);
+        var (location, _, _) = await SeedAudioAsync(factory, isActive: true);
+        await SignInAsync(client);
+        using var form = new MultipartFormDataContent();
+        form.Add(new ByteArrayContent([0, 1, 2, 3, 4, 5, 6, 7]), "File", "not-a-png.png");
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", await GetAntiforgeryTokenAsync(client));
+        var response = await client.PostAsync($"/api/admin/locations/{location.Id}/images", form);
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task LocationCreateRejectsIncompleteCoordinatePairAsValidationProblem()
+    {
+        using var factory = new ApiTestFactory();
+        using var client = factory.CreateClient();
+        await SeedUserAsync(factory, isAdmin: true);
+        await SignInAsync(client);
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", await GetAntiforgeryTokenAsync(client));
+        var response = await client.PostAsJsonAsync("/api/admin/locations", new
+        {
+            name = "Incomplete coordinates",
+            address = "Test address",
+            latitude = 15.88,
+            status = "ACTIVE"
+        });
+        client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
     public async Task HiddenAudioCannotBeDownloadedButActiveAudioCan()
     {
         using var factory = new ApiTestFactory();
@@ -495,9 +600,11 @@ public sealed class AudioAccessApiTests
         public ApiTestFactory()
         {
             AudioDirectory = Path.Combine(Path.GetTempPath(), $"qol-test-audio-{Guid.NewGuid():N}");
+            LocationImageDirectory = Path.Combine(Path.GetTempPath(), $"qol-test-images-{Guid.NewGuid():N}");
         }
 
         public string AudioDirectory { get; }
+        public string LocationImageDirectory { get; }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -506,11 +613,13 @@ public sealed class AudioAccessApiTests
                 "ConnectionStrings:DefaultConnection",
                 "Server=localhost;Database=QOL;User Id=test;Password=test");
             builder.UseSetting("Storage:AudioDirectory", AudioDirectory);
+            builder.UseSetting("Storage:LocationImageDirectory", LocationImageDirectory);
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:DefaultConnection"] = "Server=localhost;Database=QOL;User Id=test;Password=test",
-                    ["Storage:AudioDirectory"] = AudioDirectory
+                    ["Storage:AudioDirectory"] = AudioDirectory,
+                    ["Storage:LocationImageDirectory"] = LocationImageDirectory
                 }));
             builder.ConfigureTestServices(services =>
             {
@@ -527,6 +636,10 @@ public sealed class AudioAccessApiTests
             if (disposing && Directory.Exists(AudioDirectory))
             {
                 Directory.Delete(AudioDirectory, recursive: true);
+            }
+            if (disposing && Directory.Exists(LocationImageDirectory))
+            {
+                Directory.Delete(LocationImageDirectory, recursive: true);
             }
         }
     }

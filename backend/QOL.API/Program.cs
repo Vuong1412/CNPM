@@ -24,6 +24,9 @@ builder.Services.AddDbContext<QolDbContext>(options => options.UseSqlServer(conn
 var audioDirectory = builder.Configuration["Storage:AudioDirectory"]
     ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "audio");
 Directory.CreateDirectory(audioDirectory);
+var locationImageDirectory = builder.Configuration["Storage:LocationImageDirectory"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "location-images");
+Directory.CreateDirectory(locationImageDirectory);
 builder.Services.AddQolInfrastructure();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddHealthChecks()
@@ -156,7 +159,7 @@ app.MapGet("/", () => TypedResults.Ok(new { name = "QOL API", status = "ready" }
     .WithTags("System");
 
 app.MapAuthEndpoints();
-app.MapLocationEndpoints();
+app.MapLocationEndpoints(locationImageDirectory);
 app.MapAudioEndpoints(audioDirectory);
 app.MapUserActivityEndpoints();
 app.MapCommerceEndpoints();

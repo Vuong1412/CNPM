@@ -51,6 +51,12 @@ Audio media keeps its `/media/audio/{fileName}` URL. Inactive audio or locations
 
 Audio deletion preserves listening history: records with history are hidden, while records without history and their files are deleted. File replacement writes and validates a new file before updating the database, then removes the previous file. The admin orphan-cleanup endpoint supports a dry-run query flag and only scans supported audio extensions in the configured storage directory.
 
+## Location workflow
+
+`Location` stores optional latitude/longitude, a positive activation radius, display priority, original description, directions URL, `UpdatedAt`, and a status (`ACTIVE`, `INACTIVE`, `PENDING`, or `REJECTED`). Coordinates must be supplied together and stay within valid latitude/longitude bounds. Only `ACTIVE` locations appear in public location, audio, favorite, review, and dashboard queries; administrators can manage all statuses.
+
+The `AddLocationMetadata` migration maps legacy `IsActive=true` rows to `ACTIVE` and `false` rows to `INACTIVE` with SQL before dropping the old column. Its `Down` migration restores `IsActive` from `Status`. Existing locations without coordinates remain valid. `LocationImages` stores image metadata and `/media/locations/{fileName}` URLs; uploads accept PNG/JPG/WEBP up to 5 MB, validate the file signature, use GUID file names, and remove newly written files if persistence fails. The frontend uses uploaded images when available and a local SVG illustration otherwise.
+
 Payment providers and external emails must be isolated behind application interfaces before production integration.
 
 ## Testing strategy

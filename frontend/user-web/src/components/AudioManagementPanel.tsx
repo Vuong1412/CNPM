@@ -4,8 +4,7 @@ import type { AudioGuide, Language, LocationSummary } from "@qol/shared";
 import { apiClient, getMediaUrl } from "../services/api";
 
 interface ManagedLocation extends LocationSummary {
-  createdAt: string;
-  isActive: boolean;
+  updatedAt: string;
 }
 
 interface AudioManagementPanelProps {
@@ -23,7 +22,7 @@ export function AudioManagementPanel({
 }: AudioManagementPanelProps) {
   const { t } = useTranslation();
   const activeLocations = useMemo(
-    () => locations.filter((location) => location.isActive),
+    () => locations.filter((location) => location.status === "ACTIVE"),
     [locations]
   );
   const [locationId, setLocationId] = useState("");

@@ -12,6 +12,11 @@ export type {
 } from "./types/commerce";
 export type { AdminLocationReview, LocationReview } from "./types/review";
 export type { Language } from "./types/language";
-export type { LocationDetails, LocationSummary } from "./types/location";
+export type {
+  LocationDetails,
+  LocationImage,
+  LocationStatus,
+  LocationSummary
+} from "./types/location";
 export type { AuthUser } from "./types/account";
 export { formatDate } from "./utils/formatDate";

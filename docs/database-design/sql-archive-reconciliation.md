@@ -8,7 +8,8 @@ tạo, còn các script khác phụ thuộc vào bảng/model/API chưa có. EF 
 trong `backend/QOL.Infrastructure/Migrations/` tiếp tục là nguồn schema duy nhất
 cho ứng dụng hiện tại.
 
-Database local `QOL` đã áp dụng đủ bảy EF Core migrations hiện có:
+Database local `QOL` đã áp dụng bảy EF Core migrations trước thay đổi Location. Migration mới
+`AddLocationMetadata` là migration thứ tám và cần được áp dụng để triển khai schema hiện tại:
 
 - `InitialCreate`
 - `AddAccountRolesAndPasswordHash`
@@ -17,8 +18,9 @@ Database local `QOL` đã áp dụng đủ bảy EF Core migrations hiện có:
 - `AddSubscriptionsAndOrders`
 - `AddLocationReviews`
 - `AddUserSubscriptions`
+- `AddLocationMetadata`
 
-Model EF Core hiện có mười entity/bảng nghiệp vụ: `Users`, `Locations`,
+Model EF Core hiện có mười một entity/bảng nghiệp vụ: `Users`, `Locations`, `LocationImages`,
 `Languages`, `AudioFiles`, `Favorites`, `ListeningHistory`, `LocationReviews`,
 `SubscriptionPlans`, `SubscriptionOrders` và `UserSubscriptions`.
 
@@ -27,7 +29,7 @@ Model EF Core hiện có mười entity/bảng nghiệp vụ: `Users`, `Location
 | Script | Nội dung | Hiện trạng trong ứng dụng | Xử lý |
 |---|---|---|---|
 | `002-users-roles.sql` | User, role/permission, hồ sơ, phiên, reset mật khẩu, lần đăng nhập | `Users` có trong EF; ứng dụng dùng một trường `Role` (`User`/`Admin`) và cookie HTTP-only. Các bảng role-permission, session, reset token và login attempts chưa có luồng ứng dụng. | Không chạy. Chỉ bổ sung khi có yêu cầu RBAC chi tiết, quản lý phiên hoặc khôi phục mật khẩu. |
-| `003-locations.sql` | Địa điểm, GPS, danh mục, ảnh | `Locations` có trong EF; chưa có model/API cho GPS, danh mục, ảnh địa điểm. | Không chạy. Thiết kế model và API trước khi thêm các bảng/cột này. |
+| `003-locations.sql` | Địa điểm, GPS, danh mục, ảnh | `Locations` có tọa độ tùy chọn, bán kính, ưu tiên, mô tả, link chỉ đường và trạng thái; `LocationImages`/upload ảnh đã có model/API. Danh mục vẫn chưa được triển khai. | Không chạy. Dùng migration EF `AddLocationMetadata`; không chạy lại DDL của archive. Danh mục là phạm vi riêng. |
 | `004-content-translation-audio.sql` | Ngôn ngữ, bài viết, bản dịch, audio/TTS | `Languages` và `AudioFiles` có trong EF. Ứng dụng lưu tiêu đề, transcript và tệp audio thủ công; chưa có `Articles`, `Translations`, TTS hay `CategoryTranslations`. Script còn thay đổi `UserProfiles`, bảng chưa tồn tại. | Không chạy. Giữ luồng audio thủ công hiện tại; tích hợp nội dung dịch/TTS bằng model và migration khi có yêu cầu. |
 | `005-activity-reviews-notifications.sql` | Yêu thích, lịch sử nghe, đánh giá, báo cáo, thông báo | `Favorites`, `ListeningHistory`, `LocationReviews` đã có trong EF và được API dùng. `ReviewReports`, `Notifications` chưa có model/API. | Không chạy. Các bảng hiện có đã được tạo bởi migrations; thông báo/báo cáo là phạm vi riêng. |
 | `006-payment-subscription.sql` | Gói, đơn hàng, payment, đăng ký, hoàn tiền | `SubscriptionPlans`, `SubscriptionOrders` và `UserSubscriptions` đã có trong EF. Đơn hàng chỉ Pending đến khi Admin xác minh thủ công; không có tích hợp payment provider. `Payments` và `Refunds` chưa được ứng dụng sử dụng. | Không chạy. Không tạo bảng giao dịch/hoàn tiền khi chưa có nhà cung cấp thanh toán và nghiệp vụ tương ứng. |

@@ -59,7 +59,18 @@ public sealed class ModuleEntityTests
 
         Assert.Equal("New name", location.Name);
         Assert.Equal("New address", location.Address);
-        Assert.False(location.IsActive);
+        Assert.Equal(LocationStatus.Inactive, location.Status);
+    }
+
+    [Fact]
+    public void Location_ValidatesCoordinatesAndActivationRadius()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new Location("One coordinate", "Test address", latitude: 15m));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new Location("Invalid latitude", "Test address", latitude: 91m, longitude: 108m));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new Location("Invalid radius", "Test address", radiusMeters: 0));
     }
 
     [Fact]

@@ -14,11 +14,43 @@ public static class DevelopmentDataSeeder
     private const int SampleAudioDurationSeconds = 3;
     private const int SampleAudioSampleRate = 22050;
 
-    private static readonly (string Name, string Address)[] SampleLocations =
+    private static readonly (
+        string Name,
+        string Address,
+        decimal Latitude,
+        decimal Longitude,
+        int RadiusMeters,
+        int Priority,
+        string OriginalDescription,
+        string DirectionLink)[] SampleLocations =
     [
-        ("Phố cổ Hội An", "Hội An, Quảng Nam"),
-        ("Chùa Cầu", "Nguyễn Thị Minh Khai, Hội An"),
-        ("Hội quán Phúc Kiến", "46 Trần Phú, Hội An")
+        (
+            "Phố cổ Hội An",
+            "Hội An, Quảng Nam",
+            15.8801m,
+            108.3380m,
+            500,
+            3,
+            "Khu phố cổ Hội An bên sông Thu Bồn, nổi bật với kiến trúc giao thoa Việt, Hoa và Nhật.",
+            "https://maps.google.com/?q=15.8801,108.3380"),
+        (
+            "Chùa Cầu",
+            "Nguyễn Thị Minh Khai, Hội An",
+            15.8775m,
+            108.3269m,
+            100,
+            2,
+            "Cây cầu có mái che được xây dựng vào đầu thế kỷ XVII, biểu tượng của Hội An.",
+            "https://maps.google.com/?q=15.8775,108.3269"),
+        (
+            "Hội quán Phúc Kiến",
+            "46 Trần Phú, Hội An",
+            15.8774m,
+            108.3287m,
+            100,
+            1,
+            "Hội quán do cộng đồng người Phúc Kiến xây dựng, thờ Thiên Hậu Thánh Mẫu.",
+            "https://maps.google.com/?q=15.8774,108.3287")
     ];
 
     public static async Task SeedAsync(
@@ -29,11 +61,33 @@ public static class DevelopmentDataSeeder
     {
         foreach (var sample in SampleLocations)
         {
-            if (!await dbContext.Locations.AnyAsync(
-                    location => location.Name == sample.Name,
-                    cancellationToken))
+            var existingLocation = await dbContext.Locations.SingleOrDefaultAsync(
+                location => location.Name == sample.Name,
+                cancellationToken);
+            if (existingLocation is null)
             {
-                dbContext.Locations.Add(new Location(sample.Name, sample.Address));
+                dbContext.Locations.Add(new Location(
+                    sample.Name,
+                    sample.Address,
+                    sample.Latitude,
+                    sample.Longitude,
+                    sample.RadiusMeters,
+                    sample.Priority,
+                    sample.OriginalDescription,
+                    sample.DirectionLink));
+            }
+            else if (!existingLocation.Latitude.HasValue || !existingLocation.Longitude.HasValue)
+            {
+                existingLocation.UpdateDetails(
+                    existingLocation.Name,
+                    existingLocation.Address,
+                    sample.Latitude,
+                    sample.Longitude,
+                    sample.RadiusMeters,
+                    sample.Priority,
+                    sample.OriginalDescription,
+                    sample.DirectionLink,
+                    existingLocation.Status);
             }
         }
 

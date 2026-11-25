@@ -282,6 +282,14 @@ export function LocationDetailPage() {
           <p className="eyebrow">{t("explore.eyebrow")}</p>
           <h1>{location.name}</h1>
           <p>{location.address}</p>
+          {location.originalDescription && <p>{location.originalDescription}</p>}
+          {location.directionLink && (
+            <p>
+              <a href={location.directionLink} rel="noopener noreferrer" target="_blank">
+                {t("location.directions")}
+              </a>
+            </p>
+          )}
           <div className="activity-actions">
             {user ? (
               <button

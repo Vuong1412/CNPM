@@ -556,6 +556,15 @@ main {
   isolation: isolate;
 }
 
+.destination-card-image {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .destination-card:nth-child(3n + 2) {
   background: linear-gradient(145deg, #426d69, #bd9566);
 }
@@ -1042,24 +1051,37 @@ main {
 }
 
 .location-card {
-  padding: 1.25rem;
+  display: block;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 0.75rem;
   background: #fff;
+  color: inherit;
+  text-decoration: none;
 }
 
-.location-card h2 {
-  margin-top: 0;
-  font-size: 1.2rem;
+.location-card-image {
+  display: block;
+  width: 100%;
+  height: 190px;
+  background: linear-gradient(145deg, #286a56, #bd9566);
+  object-fit: cover;
 }
 
-.location-card p,
+.location-card-content {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1.25rem;
+}
+
+.location-card-content strong {
+  font-size: 1.1rem;
+}
+
+.location-card-content > span,
 .muted {
   color: var(--muted);
-}
-
-.location-card p {
-  margin-bottom: 0;
+  font-size: 0.85rem;
 }
 
 .auth-page {
@@ -1775,6 +1797,77 @@ main {
   gap: 0.8rem;
 }
 
+.admin-location-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.8rem;
+}
+
+.admin-location-form label,
+.admin-location-image-form label {
+  display: grid;
+  gap: 0.45rem;
+  color: #455149;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.admin-location-form input,
+.admin-location-form select,
+.admin-location-form textarea,
+.admin-location-image-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #dfe6df;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.admin-location-form textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+
+.admin-location-form .full-row {
+  grid-column: 1 / -1;
+}
+
+.admin-location-images {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.8rem;
+}
+
+.admin-location-image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.admin-location-image-item {
+  display: grid;
+  width: min(100%, 150px);
+  gap: 0.35rem;
+}
+
+.admin-location-image-item img {
+  width: 100%;
+  height: 90px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.admin-location-image-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.6rem;
+}
+
 @keyframes hero-reveal {
   from {
     opacity: 0.5;
@@ -2132,6 +2225,7 @@ main {
 
   .admin-create-form,
   .admin-edit-form,
+  .admin-location-form,
   .audio-upload-form,
   .audio-replace-form,
   .plan-admin-form {
@@ -2153,6 +2247,10 @@ main {
   .admin-location-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .admin-location-form .full-row {
+    grid-column: auto;
   }
 
   .activity-card-heading {

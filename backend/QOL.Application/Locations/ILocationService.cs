@@ -9,11 +9,10 @@ public interface ILocationService
         bool includeInactive,
         CancellationToken cancellationToken);
     Task<Location?> GetActiveByIdAsync(Guid id, CancellationToken cancellationToken);
-    Task<Location> CreateAsync(string name, string address, CancellationToken cancellationToken);
+    Task<Location> CreateAsync(LocationDetailsInput details, CancellationToken cancellationToken);
     Task<Location?> UpdateAsync(
         Guid id,
-        string name,
-        string address,
+        LocationDetailsInput details,
         CancellationToken cancellationToken);
     Task<bool> DeactivateAsync(Guid id, CancellationToken cancellationToken);
 }

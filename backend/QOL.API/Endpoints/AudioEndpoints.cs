@@ -32,7 +32,9 @@ public static class AudioEndpoints
             var isAdmin = principal.IsInRole("Admin");
             var locationIsActive = await db.Locations
                 .AsNoTracking()
-                .AnyAsync(location => location.Id == locationId && location.IsActive, cancellationToken);
+                .AnyAsync(
+                    location => location.Id == locationId && location.Status == LocationStatus.Active,
+                    cancellationToken);
             if (!locationIsActive)
             {
                 return TypedResults.NotFound();
@@ -56,7 +58,7 @@ public static class AudioEndpoints
                 .AsNoTracking()
                 .Where(audio => audio.LocationId == locationId &&
                     audio.IsActive &&
-                    audio.Location.IsActive &&
+                    audio.Location.Status == LocationStatus.Active &&
                     audio.Language.IsEnabled);
 
             if (!string.IsNullOrWhiteSpace(languageCode))
@@ -110,7 +112,7 @@ public static class AudioEndpoints
                 .Select(item => new
                 {
                     AudioIsActive = item.IsActive,
-                    LocationIsActive = item.Location.IsActive
+                    LocationIsActive = item.Location.Status == LocationStatus.Active
                 })
                 .SingleOrDefaultAsync(cancellationToken);
             var isAdmin = principal.IsInRole("Admin");
@@ -204,7 +206,7 @@ public static class AudioEndpoints
             CancellationToken cancellationToken) =>
         {
             if (!await db.Locations.AnyAsync(
-                    location => location.Id == locationId && location.IsActive,
+                    location => location.Id == locationId && location.Status == LocationStatus.Active,
                     cancellationToken))
             {
                 return TypedResults.NotFound();

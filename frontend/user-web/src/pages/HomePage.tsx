@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useLocations } from "../hooks/useLocations";
+import { getMediaUrl } from "../services/api";
 
 const languages = [
   { code: "vi", label: "Tiếng Việt", flag: "🇻🇳" },
@@ -138,6 +139,19 @@ export function HomePage() {
               key={location.id}
               to={`/locations/${encodeURIComponent(location.id)}`}
             >
+              <img
+                alt=""
+                className="destination-card-image"
+                loading="lazy"
+                onError={(event) => {
+                  if (!event.currentTarget.src.endsWith("/destination-placeholder.svg")) {
+                    event.currentTarget.src = "/destination-placeholder.svg";
+                  }
+                }}
+                src={location.images[0]
+                  ? getMediaUrl(location.images[0].imageUrl)
+                  : "/destination-placeholder.svg"}
+              />
               <span className="destination-shade" />
               <span className="destination-index">{String(index + 1).padStart(2, "0")}</span>
               <span className="destination-info">

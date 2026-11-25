@@ -323,7 +323,9 @@ public static class CommerceEndpoints
         {
             var counts = new AdminDashboardResponse(
                 await db.Users.CountAsync(cancellationToken),
-                await db.Locations.CountAsync(location => location.IsActive, cancellationToken),
+                await db.Locations.CountAsync(
+                    location => location.Status == LocationStatus.Active,
+                    cancellationToken),
                 await db.AudioFiles.CountAsync(audio => audio.IsActive, cancellationToken),
                 await db.SubscriptionPlans.CountAsync(plan => plan.IsActive, cancellationToken),
                 await db.SubscriptionOrders.CountAsync(

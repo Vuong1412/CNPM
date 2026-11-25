@@ -57,7 +57,7 @@ public static class UserActivityEndpoints
 
             var location = await db.Locations
                 .SingleOrDefaultAsync(
-                    item => item.Id == locationId && item.IsActive,
+                    item => item.Id == locationId && item.Status == LocationStatus.Active,
                     cancellationToken);
             if (location is null)
             {
@@ -160,7 +160,7 @@ public static class UserActivityEndpoints
             var audio = await db.AudioFiles
                 .AsNoTracking()
                 .Where(item => item.Id == request.AudioId &&
-                    item.Location.IsActive &&
+                    item.Location.Status == LocationStatus.Active &&
                     item.Language.IsEnabled)
                 .Select(item => new { item.Id, item.LocationId, item.LanguageId })
                 .SingleOrDefaultAsync(cancellationToken);

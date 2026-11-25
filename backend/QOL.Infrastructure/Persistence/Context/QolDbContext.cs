@@ -7,6 +7,7 @@ public sealed class QolDbContext(DbContextOptions<QolDbContext> options) : DbCon
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Location> Locations => Set<Location>();
+    public DbSet<LocationImage> LocationImages => Set<LocationImage>();
     public DbSet<Language> Languages => Set<Language>();
     public DbSet<AudioFile> AudioFiles => Set<AudioFile>();
     public DbSet<Favorite> Favorites => Set<Favorite>();

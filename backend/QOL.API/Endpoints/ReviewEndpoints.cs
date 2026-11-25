@@ -19,7 +19,7 @@ public static class ReviewEndpoints
             var reviews = await db.LocationReviews
                 .AsNoTracking()
                 .Where(review => review.LocationId == locationId &&
-                    review.Location.IsActive &&
+                    review.Location.Status == LocationStatus.Active &&
                     review.IsVisible)
                 .OrderByDescending(review => review.CreatedAt)
                 .Take(100)
@@ -85,7 +85,7 @@ public static class ReviewEndpoints
             }
 
             var locationExists = await db.Locations.AnyAsync(
-                location => location.Id == locationId && location.IsActive,
+                location => location.Id == locationId && location.Status == LocationStatus.Active,
                 cancellationToken);
             if (!locationExists)
             {
