@@ -52,6 +52,11 @@ public sealed class SubscriptionOrder
 
     public void Review(SubscriptionOrderStatus status, Guid adminUserId, string? note)
     {
+        Review(status, (Guid?)adminUserId, note);
+    }
+
+    public void Review(SubscriptionOrderStatus status, Guid? reviewerUserId, string? note)
+    {
         if (Status != SubscriptionOrderStatus.Pending)
         {
             throw new InvalidOperationException("Only pending orders can be reviewed.");
@@ -62,9 +67,9 @@ public sealed class SubscriptionOrder
             throw new ArgumentOutOfRangeException(nameof(status), "A reviewed order must be verified or rejected.");
         }
 
-        if (adminUserId == Guid.Empty)
+        if (reviewerUserId == Guid.Empty)
         {
-            throw new ArgumentException("Administrator ID cannot be empty.", nameof(adminUserId));
+            throw new ArgumentException("Reviewer ID cannot be empty.", nameof(reviewerUserId));
         }
 
         if (note?.Length > 1000)
@@ -74,7 +79,7 @@ public sealed class SubscriptionOrder
 
         Status = status;
         ReviewedAt = DateTimeOffset.UtcNow;
-        ReviewedByUserId = adminUserId;
+        ReviewedByUserId = reviewerUserId;
         ReviewNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
     }
 }

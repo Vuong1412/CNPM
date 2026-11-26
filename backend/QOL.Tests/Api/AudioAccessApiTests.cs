@@ -257,7 +257,11 @@ public sealed class AudioAccessApiTests
     public async Task UserWithActiveSubscriptionCanListAndStreamAudio()
     {
         using var factory = new ApiTestFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            HandleCookies = true,
+            BaseAddress = new Uri("http://localhost")
+        });
         var user = await SeedUserAsync(factory);
         var (_, _, audio) = await SeedAudioAsync(factory, isActive: true);
         await SeedSubscriptionAsync(factory, user.Id);
@@ -558,6 +562,10 @@ public sealed class AudioAccessApiTests
             rememberMe = false
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains(
+            response.Headers.GetValues("Set-Cookie"),
+            cookie => cookie.Contains("QOL.Session=", StringComparison.Ordinal) &&
+                cookie.Contains("Path=/", StringComparison.OrdinalIgnoreCase));
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
     }
 

@@ -1,12 +1,24 @@
 namespace QOL.Domain.Entities;
 
+public enum AudioSource
+{
+    Upload,
+    Tts
+}
+
 public sealed class AudioFile
 {
     private AudioFile()
     {
     }
 
-    public AudioFile(Guid locationId, Guid languageId, string audioUrl, int durationSeconds)
+    public AudioFile(
+        Guid locationId,
+        Guid languageId,
+        string audioUrl,
+        int durationSeconds,
+        AudioSource source = AudioSource.Upload,
+        Guid? translationId = null)
     {
         if (locationId == Guid.Empty)
         {
@@ -28,6 +40,17 @@ public sealed class AudioFile
             throw new ArgumentOutOfRangeException(nameof(durationSeconds), "Audio duration must be positive.");
         }
 
+        if (!Enum.IsDefined(source))
+        {
+            throw new ArgumentOutOfRangeException(nameof(source));
+        }
+        if ((source == AudioSource.Tts) != (translationId is not null))
+        {
+            throw new ArgumentException(
+                "TTS audio must reference a translation and uploaded audio must not.",
+                nameof(translationId));
+        }
+
         Id = Guid.NewGuid();
         LocationId = locationId;
         LanguageId = languageId;
@@ -36,6 +59,8 @@ public sealed class AudioFile
         AudioUrl = audioUrl.Trim();
         DurationSeconds = durationSeconds;
         IsActive = true;
+        Source = source;
+        TranslationId = translationId;
     }
 
     public AudioFile(
@@ -44,8 +69,10 @@ public sealed class AudioFile
         string title,
         string transcript,
         string audioUrl,
-        int durationSeconds)
-        : this(locationId, languageId, audioUrl, durationSeconds)
+        int durationSeconds,
+        AudioSource source = AudioSource.Upload,
+        Guid? translationId = null)
+        : this(locationId, languageId, audioUrl, durationSeconds, source, translationId)
     {
         UpdateContent(title, transcript);
     }
@@ -68,7 +95,11 @@ public sealed class AudioFile
 
     public void SetActive(bool isActive) => IsActive = isActive;
 
-    public void ReplaceFile(string audioUrl, int durationSeconds)
+    public void ReplaceFile(
+        string audioUrl,
+        int durationSeconds,
+        AudioSource source = AudioSource.Upload,
+        Guid? translationId = null)
     {
         if (string.IsNullOrWhiteSpace(audioUrl) || audioUrl.Length > 2048)
         {
@@ -79,9 +110,16 @@ public sealed class AudioFile
         {
             throw new ArgumentOutOfRangeException(nameof(durationSeconds), "Audio duration must be positive.");
         }
+        if (!Enum.IsDefined(source) ||
+            ((source == AudioSource.Tts) != (translationId is not null)))
+        {
+            throw new ArgumentException("Audio source and translation reference do not match.", nameof(source));
+        }
 
         AudioUrl = audioUrl.Trim();
         DurationSeconds = durationSeconds;
+        Source = source;
+        TranslationId = translationId;
     }
 
     public Guid Id { get; private set; }
@@ -92,6 +130,9 @@ public sealed class AudioFile
     public string AudioUrl { get; private set; } = string.Empty;
     public int DurationSeconds { get; private set; }
     public bool IsActive { get; private set; }
+    public AudioSource Source { get; private set; }
+    public Guid? TranslationId { get; private set; }
     public Location Location { get; private set; } = null!;
     public Language Language { get; private set; } = null!;
+    public LocationTranslation? Translation { get; private set; }
 }

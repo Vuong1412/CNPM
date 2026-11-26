@@ -38,4 +38,6 @@ storage/documents/*
 !storage/documents/.gitkeep
 backend/QOL.API/App_Data/audio/*
 !backend/QOL.API/App_Data/audio/.gitkeep
+backend/QOL.API/App_Data/location-images/*
+!backend/QOL.API/App_Data/location-images/.gitkeep
 *.log

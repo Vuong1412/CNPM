@@ -19,5 +19,6 @@ export interface ListeningHistoryItem {
   durationSeconds: number;
   isCompleted: boolean;
   triggerMethod: ListeningTriggerMethod;
+  sessionId?: string | null;
   listenedAt: string;
 }

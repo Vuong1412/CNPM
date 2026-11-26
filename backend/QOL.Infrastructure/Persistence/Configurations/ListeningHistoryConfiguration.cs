@@ -22,6 +22,10 @@ internal sealed class ListeningHistoryConfiguration : IEntityTypeConfiguration<L
             .WithMany(user => user.ListeningHistory)
             .HasForeignKey(history => history.UserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(history => history.Session)
+            .WithMany(session => session.ListeningHistory)
+            .HasForeignKey(history => history.SessionId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(history => history.Location)
             .WithMany(location => location.ListeningHistory)
             .HasForeignKey(history => history.LocationId)
@@ -35,6 +39,7 @@ internal sealed class ListeningHistoryConfiguration : IEntityTypeConfiguration<L
             .HasForeignKey(history => history.LanguageId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(history => new { history.UserId, history.ListenedAt });
+        builder.HasIndex(history => history.SessionId);
         builder.HasIndex(history => history.LocationId);
         builder.HasIndex(history => history.LanguageId);
     }

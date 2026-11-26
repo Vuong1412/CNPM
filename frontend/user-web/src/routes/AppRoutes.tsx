@@ -15,6 +15,10 @@ import { LocationListPage } from "../pages/locations/LocationListPage";
 import { PlansPage } from "../pages/PlansPage";
 import { OrdersPage } from "../pages/OrdersPage";
 import { UnauthorizedPage } from "../pages/UnauthorizedPage";
+import { AccessPage } from "../pages/AccessPage";
+import { PrivacyPage } from "../pages/PrivacyPage";
+import { AdminAccessQrPage } from "../pages/AdminAccessQrPage";
+import { PaymentResultPage } from "../pages/PaymentResultPage";
 import { ProtectedRoute } from "./ProtectedRoute";
 
 const MapPage = lazy(() =>
@@ -30,6 +34,8 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/access" element={<AccessPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/explore" element={<LocationListPage />} />
       <Route
         path="/map"
@@ -45,11 +51,19 @@ export function AppRoutes() {
       <Route path="/listening-history" element={<ProtectedRoute><ListeningHistoryPage /></ProtectedRoute>} />
       <Route path="/plans" element={<PlansPage />} />
       <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
+      <Route
+        path="/payment/result"
+        element={<ProtectedRoute><PaymentResultPage /></ProtectedRoute>}
+      />
       <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
       <Route path="/login" element={<AuthPage mode="login" />} />
       <Route path="/register" element={<AuthPage mode="register" />} />
       <Route path="/bootstrap-admin" element={<BootstrapAdminPage />} />
       <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminPage /></ProtectedRoute>} />
+      <Route
+        path="/admin/access-qr"
+        element={<ProtectedRoute requireAdmin><AdminAccessQrPage /></ProtectedRoute>}
+      />
       <Route path="/not-authorized" element={<UnauthorizedPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

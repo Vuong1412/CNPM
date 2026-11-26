@@ -42,7 +42,7 @@ public static class ReviewEndpoints
             .RequireRateLimiting("sensitive-write")
             .RequireAuthorization();
 
-        userReviews.MapGet("/", async Task<IResult> (
+        userReviews.MapGet("", async Task<IResult> (
             Guid locationId,
             ClaimsPrincipal principal,
             QolDbContext db,
@@ -72,7 +72,7 @@ public static class ReviewEndpoints
         .Produces<ReviewResponse>()
         .Produces(StatusCodes.Status404NotFound);
 
-        userReviews.MapPut("/", async Task<IResult> (
+        userReviews.MapPut("", async Task<IResult> (
             Guid locationId,
             UpsertReviewRequest request,
             ClaimsPrincipal principal,
@@ -119,7 +119,7 @@ public static class ReviewEndpoints
         .Produces(StatusCodes.Status404NotFound)
         .ProducesValidationProblem();
 
-        userReviews.MapDelete("/", async Task<IResult> (
+        userReviews.MapDelete("", async Task<IResult> (
             Guid locationId,
             ClaimsPrincipal principal,
             QolDbContext db,

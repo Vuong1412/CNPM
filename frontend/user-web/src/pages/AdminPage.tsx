@@ -11,6 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import { useLanguages } from "../hooks/useLanguages";
 import { AudioManagementPanel } from "../components/AudioManagementPanel";
 import { AdminCommercePanel } from "../components/AdminCommercePanel";
+import { TranslationManagementPanel } from "../components/TranslationManagementPanel";
 import { apiClient, getMediaUrl } from "../services/api";
 
 type ManagedLocation = LocationDetails;
@@ -354,7 +355,12 @@ export function AdminPage() {
           <h1>{t("admin.title")}</h1>
           <p>{t("admin.description")}</p>
         </div>
-        <span className="admin-role-badge">{user.displayName} · Admin</span>
+        <div className="admin-heading-actions">
+          <span className="admin-role-badge">{user.displayName} · Admin</span>
+          <Link className="button-secondary" to="/admin/access-qr">
+            {t("admin.accessQrTitle")}
+          </Link>
+        </div>
       </div>
 
       <div className="admin-panel">
@@ -488,6 +494,7 @@ export function AdminPage() {
         languages={languages}
         locations={locations}
       />
+      <TranslationManagementPanel locations={locations} languages={languages} />
       <AdminCommercePanel />
     </section>
   );

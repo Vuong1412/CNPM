@@ -19,6 +19,7 @@ export function OrdersPage() {
   const [orders, setOrders] = useState<SubscriptionOrder[]>([]);
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,6 +50,21 @@ export function OrdersPage() {
 
     return () => controller.abort();
   }, [isAuthLoading, t, user]);
+
+  async function payForOrder(orderId: string) {
+    setPayingOrderId(orderId);
+    setError(null);
+    try {
+      const payment = await apiClient.post<{ paymentId: string; paymentUrl: string }>(
+        `me/orders/${encodeURIComponent(orderId)}/pay`,
+        {}
+      );
+      window.location.assign(payment.paymentUrl);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("orders.paymentError"));
+      setPayingOrderId(null);
+    }
+  }
 
   if (isAuthLoading || (user && isLoading)) {
     return <section className="content-page"><p role="status">{t("common.loading")}</p></section>;
@@ -108,7 +124,21 @@ export function OrdersPage() {
                     {t(`orders.status.${order.status}`)}
                   </span>
                 </div>
-                {order.status === "Pending" && <p className="form-hint">{t("orders.pendingNotice")}</p>}
+                {order.status === "Pending" && (
+                  <>
+                    <p className="form-hint">{t("orders.pendingNotice")}</p>
+                    <button
+                      className="button-primary"
+                      disabled={payingOrderId !== null}
+                      onClick={() => void payForOrder(order.id)}
+                      type="button"
+                    >
+                      {payingOrderId === order.id
+                        ? t("auth.working")
+                        : t("orders.payWithVnPay")}
+                    </button>
+                  </>
+                )}
                 {order.reviewNote && <p>{t("orders.reviewNote", { note: order.reviewNote })}</p>}
               </article>
             ))}

@@ -21,6 +21,11 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 COPY --from=build /app/migrate ./migrate
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /app/App_Data/audio /app/App_Data/location-images \
+    && chown -R $APP_UID:$APP_UID /app/App_Data
 EXPOSE 8080
 ENV ASPNETCORE_HTTP_PORTS=8080
 USER $APP_UID

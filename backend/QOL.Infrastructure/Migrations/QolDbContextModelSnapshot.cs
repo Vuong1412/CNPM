@@ -22,6 +22,43 @@ namespace QOL.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("QOL.Domain.Entities.ActionLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("EntityId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId", "OccurredAt");
+
+                    b.ToTable("ActionLogs");
+                });
+
             modelBuilder.Entity("QOL.Domain.Entities.AudioFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -45,6 +82,13 @@ namespace QOL.Infrastructure.Migrations
                     b.Property<Guid>("LocationId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("Upload");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -54,9 +98,14 @@ namespace QOL.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("TranslationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("LanguageId");
+
+                    b.HasIndex("TranslationId");
 
                     b.HasIndex("LocationId", "LanguageId");
 
@@ -183,6 +232,9 @@ namespace QOL.Infrastructure.Migrations
                     b.Property<Guid>("LocationId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("SessionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("TriggerMethod")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -190,7 +242,7 @@ namespace QOL.Infrastructure.Migrations
                         .HasColumnType("nvarchar(10)")
                         .HasDefaultValueSql("N'TAP'");
 
-                    b.Property<Guid>("UserId")
+                    b.Property<Guid?>("UserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
@@ -200,6 +252,8 @@ namespace QOL.Infrastructure.Migrations
                     b.HasIndex("LanguageId");
 
                     b.HasIndex("LocationId");
+
+                    b.HasIndex("SessionId");
 
                     b.HasIndex("UserId", "ListenedAt");
 
@@ -332,6 +386,84 @@ namespace QOL.Infrastructure.Migrations
                     b.HasIndex("LocationId", "IsVisible", "CreatedAt");
 
                     b.ToTable("LocationReviews");
+                });
+
+            modelBuilder.Entity("QOL.Domain.Entities.LocationTranslation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("LanguageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LanguageId");
+
+                    b.HasIndex("LocationId", "LanguageId")
+                        .IsUnique();
+
+                    b.ToTable("LocationTranslations");
+                });
+
+            modelBuilder.Entity("QOL.Domain.Entities.Payment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("PaidAt")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ProviderTxnId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderTxnId")
+                        .IsUnique();
+
+                    b.HasIndex("OrderId", "CreatedAt");
+
+                    b.ToTable("Payments");
                 });
 
             modelBuilder.Entity("QOL.Domain.Entities.SubscriptionOrder", b =>
@@ -524,6 +656,50 @@ namespace QOL.Infrastructure.Migrations
                     b.ToTable("UserSubscriptions");
                 });
 
+            modelBuilder.Entity("QOL.Domain.Entities.VisitorSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("LanguageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("LanguageId");
+
+                    b.ToTable("VisitorSessions");
+                });
+
+            modelBuilder.Entity("QOL.Domain.Entities.ActionLog", b =>
+                {
+                    b.HasOne("QOL.Domain.Entities.User", "Actor")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Actor");
+                });
+
             modelBuilder.Entity("QOL.Domain.Entities.AudioFile", b =>
                 {
                     b.HasOne("QOL.Domain.Entities.Language", "Language")
@@ -538,9 +714,16 @@ namespace QOL.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("QOL.Domain.Entities.LocationTranslation", "Translation")
+                        .WithMany("AudioFiles")
+                        .HasForeignKey("TranslationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Language");
 
                     b.Navigation("Location");
+
+                    b.Navigation("Translation");
                 });
 
             modelBuilder.Entity("QOL.Domain.Entities.Favorite", b =>
@@ -582,17 +765,23 @@ namespace QOL.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("QOL.Domain.Entities.VisitorSession", "Session")
+                        .WithMany("ListeningHistory")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("QOL.Domain.Entities.User", "User")
                         .WithMany("ListeningHistory")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AudioFile");
 
                     b.Navigation("Language");
 
                     b.Navigation("Location");
+
+                    b.Navigation("Session");
 
                     b.Navigation("User");
                 });
@@ -625,6 +814,36 @@ namespace QOL.Infrastructure.Migrations
                     b.Navigation("Location");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("QOL.Domain.Entities.LocationTranslation", b =>
+                {
+                    b.HasOne("QOL.Domain.Entities.Language", "Language")
+                        .WithMany()
+                        .HasForeignKey("LanguageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QOL.Domain.Entities.Location", "Location")
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Language");
+
+                    b.Navigation("Location");
+                });
+
+            modelBuilder.Entity("QOL.Domain.Entities.Payment", b =>
+                {
+                    b.HasOne("QOL.Domain.Entities.SubscriptionOrder", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
                 });
 
             modelBuilder.Entity("QOL.Domain.Entities.SubscriptionOrder", b =>
@@ -678,6 +897,16 @@ namespace QOL.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("QOL.Domain.Entities.VisitorSession", b =>
+                {
+                    b.HasOne("QOL.Domain.Entities.Language", "Language")
+                        .WithMany()
+                        .HasForeignKey("LanguageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Language");
+                });
+
             modelBuilder.Entity("QOL.Domain.Entities.Location", b =>
                 {
                     b.Navigation("AudioFiles");
@@ -689,10 +918,20 @@ namespace QOL.Infrastructure.Migrations
                     b.Navigation("ListeningHistory");
                 });
 
+            modelBuilder.Entity("QOL.Domain.Entities.LocationTranslation", b =>
+                {
+                    b.Navigation("AudioFiles");
+                });
+
             modelBuilder.Entity("QOL.Domain.Entities.User", b =>
                 {
                     b.Navigation("Favorites");
 
+                    b.Navigation("ListeningHistory");
+                });
+
+            modelBuilder.Entity("QOL.Domain.Entities.VisitorSession", b =>
+                {
                     b.Navigation("ListeningHistory");
                 });
 #pragma warning restore 612, 618

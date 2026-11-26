@@ -11,6 +11,7 @@ interface SiteLayoutProps {
 const navigation = [
   { to: "/", key: "nav.home" },
   { to: "/explore", key: "nav.explore" },
+  { to: "/access", key: "nav.access" },
   { to: "/map", key: "nav.map" },
   { to: "/languages", key: "nav.languages" },
   { to: "/plans", key: "nav.plans" },
@@ -56,9 +57,12 @@ export function SiteLayout({ children }: SiteLayoutProps) {
           {user ? (
             <>
               {user.role === "Admin" && (
-                <NavLink className="header-history" to="/admin">
-                  {t("nav.admin")}
-                </NavLink>
+                <>
+                  <NavLink className="header-history" to="/admin">{t("nav.admin")}</NavLink>
+                  <NavLink className="header-history" to="/admin/access-qr">
+                    {t("admin.accessQrTitle")}
+                  </NavLink>
+                </>
               )}
               <NavLink className="header-history" to="/listening-history">
                 {t("nav.history")}
@@ -99,7 +103,8 @@ export function SiteLayout({ children }: SiteLayoutProps) {
         <span>{t("footer")}</span>
         <div className="footer-links">
           <NavLink to="/languages">{t("nav.languages")}</NavLink>
-          <NavLink to="/profile">{t("nav.profile")}</NavLink>
+          {user && <NavLink to="/profile">{t("nav.profile")}</NavLink>}
+          <NavLink to="/privacy">{t("nav.privacy")}</NavLink>
         </div>
       </footer>
     </div>

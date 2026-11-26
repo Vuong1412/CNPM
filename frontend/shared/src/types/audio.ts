@@ -10,4 +10,6 @@ export interface AudioGuide {
   audioUrl: string;
   durationSeconds: number;
   isActive: boolean;
+  source: "UPLOAD" | "TTS";
+  translationId: string | null;
 }

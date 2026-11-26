@@ -61,7 +61,11 @@ The `AddLocationMetadata` migration maps legacy `IsActive=true` rows to `ACTIVE`
 
 `ListeningHistory.TriggerMethod` is stored as `TAP` or `AUTO_GPS`. Existing history rows receive `TAP` in the `AddListeningTriggerMethod` migration; new listening-session requests default to `TAP` for backward compatibility.
 
-Payment providers and external emails must be isolated behind application interfaces before production integration.
+Payment and notification integrations live behind `IPaymentGateway` and `IEmailProvider`. VNPay callbacks are accepted only after HMAC-SHA512, merchant code, currency, and server-side amount validation; manual order review remains available. `IOrderFulfillmentService` is shared by the manual review and callback flows and creates at most one subscription per order. SMTP and Azure Speech configuration is optional and must be supplied outside source control; fake providers are used for tests.
+
+Visitor sessions retain an anonymous device identifier and optional language selection only. They do not authenticate account endpoints and do not bypass the subscription check for audio playback. `ListeningHistory.UserId` may be null only when an authorized listening event is associated with a visitor session.
+
+The current EF model has 15 tables and 12 migrations. The SQL archive reconciliation document describes the original archive comparison; its implementation-status notes are kept current with the application.
 
 ## Testing strategy
 

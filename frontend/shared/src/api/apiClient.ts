@@ -14,7 +14,11 @@ export class ApiError extends Error {
 }
 
 export function createApiClient({ baseUrl }: ApiClientOptions) {
-  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const withTrailingSlash = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const normalizedBaseUrl =
+    typeof window !== "undefined" && withTrailingSlash.startsWith("/")
+      ? new URL(withTrailingSlash, window.location.origin).toString()
+      : withTrailingSlash;
   let antiforgeryToken: string | null = null;
 
   async function ensureAntiforgeryToken(signal?: AbortSignal): Promise<string> {
@@ -28,6 +32,25 @@ export function createApiClient({ baseUrl }: ApiClientOptions) {
     });
     antiforgeryToken = response.requestToken;
     return antiforgeryToken;
+  }
+
+  async function mutate<T>(
+    path: string,
+    init: RequestInit,
+    signal?: AbortSignal
+  ): Promise<T> {
+    const requestToken = await ensureAntiforgeryToken(signal);
+    const headers = new Headers(init.headers);
+    headers.set("X-CSRF-TOKEN", requestToken);
+
+    try {
+      const result = await request<T>(path, { ...init, headers, signal });
+      antiforgeryToken = null;
+      return result;
+    } catch (cause) {
+      antiforgeryToken = null;
+      throw cause;
+    }
   }
 
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -67,66 +90,46 @@ export function createApiClient({ baseUrl }: ApiClientOptions) {
       return request<T>(path, { method: "GET", signal });
     },
     async post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-      const requestToken = await ensureAntiforgeryToken(signal);
-      return request<T>(path, {
+      return mutate<T>(path, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": requestToken
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify(body),
-        signal
-      });
+        body: JSON.stringify(body)
+      }, signal);
     },
     async postForm<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
-      const requestToken = await ensureAntiforgeryToken(signal);
-      return request<T>(path, {
+      return mutate<T>(path, {
         method: "POST",
-        headers: { "X-CSRF-TOKEN": requestToken },
-        body,
-        signal
-      });
+        body
+      }, signal);
     },
     async putForm<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
-      const requestToken = await ensureAntiforgeryToken(signal);
-      return request<T>(path, {
+      return mutate<T>(path, {
         method: "PUT",
-        headers: { "X-CSRF-TOKEN": requestToken },
-        body,
-        signal
-      });
+        body
+      }, signal);
     },
     async put<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-      const requestToken = await ensureAntiforgeryToken(signal);
-      return request<T>(path, {
+      return mutate<T>(path, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": requestToken
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify(body),
-        signal
-      });
+        body: JSON.stringify(body)
+      }, signal);
     },
     async patch<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-      const requestToken = await ensureAntiforgeryToken(signal);
-      return request<T>(path, {
+      return mutate<T>(path, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN": requestToken
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify(body),
-        signal
-      });
+        body: JSON.stringify(body)
+      }, signal);
     },
     async delete<T>(path: string, signal?: AbortSignal): Promise<T> {
-      const requestToken = await ensureAntiforgeryToken(signal);
-      return request<T>(path, {
-        method: "DELETE",
-        headers: { "X-CSRF-TOKEN": requestToken },
-        signal
-      });
+      return mutate<T>(path, { method: "DELETE" }, signal);
     }
   };
 }

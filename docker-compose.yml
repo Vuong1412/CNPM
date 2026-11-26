@@ -10,22 +10,11 @@ services:
     volumes:
       - qol-sql-data:/var/opt/mssql
     healthcheck:
-      test:
-        - CMD
-        - /opt/mssql-tools18/bin/sqlcmd
-        - -S
-        - localhost
-        - -U
-        - sa
-        - -P
-        - ${SQL_SA_PASSWORD:?Set SQL_SA_PASSWORD in .env}
-        - -C
-        - -Q
-        - SELECT 1
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S tcp:localhost,1433 -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -l 5 -Q \"SELECT 1;\" || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
 
   db-init:
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -43,14 +32,41 @@ services:
             exit 1
           fi
         done
-        exec /opt/mssql-tools18/bin/sqlcmd
-          -S sqlserver,1433
-          -U sa
-          -P "$$SQL_SA_PASSWORD"
-          -C
-          -b
-          -v APP_PASSWORD="$$SQL_APP_PASSWORD" MIGRATOR_PASSWORD="$$SQL_MIGRATOR_PASSWORD"
+
+        connected=0
+        for attempt in $(seq 1 30); do
+          if /opt/mssql-tools18/bin/sqlcmd \
+              -S tcp:sqlserver,1433 \
+              -U sa \
+              -P "$$SQL_SA_PASSWORD" \
+              -C -l 30 \
+              -Q "SELECT 1"; then
+            connected=1
+            break
+          fi
+          echo "Waiting for SQL Server: attempt $$attempt/30"
+          if [ "$$attempt" -lt 30 ]; then
+            sleep 5
+          fi
+        done
+
+        if [ "$$connected" -ne 1 ]; then
+          echo "ERROR: Could not connect to SQL Server at tcp:sqlserver,1433 after 30 attempts."
+          exit 1
+        fi
+
+        /opt/mssql-tools18/bin/sqlcmd \
+          -S tcp:sqlserver,1433 \
+          -U sa \
+          -P "$$SQL_SA_PASSWORD" \
+          -C -b \
+          -v APP_PASSWORD="$$SQL_APP_PASSWORD" MIGRATOR_PASSWORD="$$SQL_MIGRATOR_PASSWORD" \
           -i /scripts/001-create-app-logins.sql
+        sql_status=$$?
+        if [ "$$sql_status" -ne 0 ]; then
+          echo "ERROR: Database initialization failed with sqlcmd exit code $$sql_status."
+          exit "$$sql_status"
+        fi
     environment:
       SQL_SA_PASSWORD: ${SQL_SA_PASSWORD:?Set SQL_SA_PASSWORD in .env}
       SQL_APP_PASSWORD: ${SQL_APP_PASSWORD:?Set SQL_APP_PASSWORD in .env}
@@ -82,13 +98,49 @@ services:
       dockerfile: backend/QOL.API/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=QOL;User Id=qol_app;Password=${SQL_APP_PASSWORD:?Set SQL_APP_PASSWORD in .env};TrustServerCertificate=True
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=QOL;User Id=qol_app;Password=${SQL_APP_PASSWORD:?Set SQL_APP_PASSWORD in .env};Encrypt=${SQL_ENCRYPT:-true};TrustServerCertificate=${SQL_TRUST_SERVER_CERTIFICATE:-true}
       Storage__AudioDirectory: /app/App_Data/audio
+      Storage__LocationImageDirectory: /app/App_Data/location-images
+      VnPay__Enabled: ${VNPAY_ENABLED:-false}
+      VnPay__TmnCode: ${VNPAY_TMN_CODE:-}
+      VnPay__HashSecret: ${VNPAY_HASH_SECRET:-}
+      VnPay__PaymentUrl: ${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      VnPay__ReturnUrl: ${VNPAY_RETURN_URL:-}
+      VnPay__IpnUrl: ${VNPAY_IPN_URL:-}
+      AzureSpeech__Endpoint: ${AZURE_SPEECH_ENDPOINT:-}
+      AzureSpeech__SubscriptionKey: ${AZURE_SPEECH_SUBSCRIPTION_KEY:-}
+      Email__Host: ${SMTP_HOST:-}
+      Email__Port: ${SMTP_PORT:-587}
+      Email__EnableSsl: ${SMTP_ENABLE_SSL:-true}
+      Email__UserName: ${SMTP_USERNAME:-}
+      Email__Password: ${SMTP_PASSWORD:-}
+      Email__From: ${SMTP_FROM:-}
     ports:
       - "${API_PORT:-8080}:8080"
+    volumes:
+      - qol-app-data:/app/App_Data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --show-error http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     depends_on:
       migrator:
         condition: service_completed_successfully
 
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   qol-sql-data:
+  qol-app-data:

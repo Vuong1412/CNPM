@@ -13,15 +13,16 @@ public sealed class ListeningHistory
     }
 
     public ListeningHistory(
-        Guid userId,
+        Guid? userId,
         Guid locationId,
         Guid audioId,
         Guid languageId,
-        ListeningTriggerMethod triggerMethod = ListeningTriggerMethod.Tap)
+        ListeningTriggerMethod triggerMethod = ListeningTriggerMethod.Tap,
+        Guid? sessionId = null)
     {
-        if (userId == Guid.Empty)
+        if (userId == Guid.Empty || sessionId == Guid.Empty || (userId is null && sessionId is null))
         {
-            throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+            throw new ArgumentException("A valid user or visitor session is required.", nameof(userId));
         }
 
         if (locationId == Guid.Empty)
@@ -46,6 +47,7 @@ public sealed class ListeningHistory
 
         Id = Guid.NewGuid();
         UserId = userId;
+        SessionId = sessionId;
         LocationId = locationId;
         AudioId = audioId;
         LanguageId = languageId;
@@ -65,7 +67,8 @@ public sealed class ListeningHistory
     }
 
     public Guid Id { get; private set; }
-    public Guid UserId { get; private set; }
+    public Guid? UserId { get; private set; }
+    public Guid? SessionId { get; private set; }
     public Guid LocationId { get; private set; }
     public Guid AudioId { get; private set; }
     public Guid LanguageId { get; private set; }
@@ -73,7 +76,8 @@ public sealed class ListeningHistory
     public int DurationSeconds { get; private set; }
     public bool IsCompleted { get; private set; }
     public ListeningTriggerMethod TriggerMethod { get; private set; }
-    public User User { get; private set; } = null!;
+    public User? User { get; private set; }
+    public VisitorSession? Session { get; private set; }
     public Location Location { get; private set; } = null!;
     public AudioFile AudioFile { get; private set; } = null!;
     public Language Language { get; private set; } = null!;

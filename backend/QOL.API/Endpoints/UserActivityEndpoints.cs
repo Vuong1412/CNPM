@@ -138,6 +138,7 @@ public static class UserActivityEndpoints
                     item.DurationSeconds,
                     item.IsCompleted,
                     ToTriggerMethodString(item.TriggerMethod),
+                    item.SessionId,
                     item.ListenedAt))
                 .ToArrayAsync(cancellationToken);
 
@@ -150,6 +151,7 @@ public static class UserActivityEndpoints
         history.MapPost("/", async Task<IResult> (
             StartListeningRequest request,
             ClaimsPrincipal principal,
+            HttpContext httpContext,
             QolDbContext db,
             CancellationToken cancellationToken) =>
         {
@@ -170,6 +172,18 @@ public static class UserActivityEndpoints
                 return TypedResults.NotFound();
             }
 
+            Guid? visitorSessionId = null;
+            if (Guid.TryParse(
+                    httpContext.Request.Cookies[VisitorEndpoints.VisitorCookieName],
+                    out var parsedSessionId) &&
+                await db.VisitorSessions.AnyAsync(
+                    session => session.Id == parsedSessionId &&
+                        session.ExpiresAt > DateTimeOffset.UtcNow,
+                    cancellationToken))
+            {
+                visitorSessionId = parsedSessionId;
+            }
+
             var historyItem = new ListeningHistory(
                 userId,
                 audio.LocationId,
@@ -177,7 +191,8 @@ public static class UserActivityEndpoints
                 audio.LanguageId,
                 request.TriggerMethod == "AUTO_GPS"
                     ? ListeningTriggerMethod.AutoGps
-                    : ListeningTriggerMethod.Tap);
+                    : ListeningTriggerMethod.Tap,
+                visitorSessionId);
             db.ListeningHistory.Add(historyItem);
             await db.SaveChangesAsync(cancellationToken);
 
@@ -279,4 +294,5 @@ public sealed record ListeningHistoryResponse(
     int DurationSeconds,
     bool IsCompleted,
     string TriggerMethod,
+    Guid? SessionId,
     DateTimeOffset ListenedAt);

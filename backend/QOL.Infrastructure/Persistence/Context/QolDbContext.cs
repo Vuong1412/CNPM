@@ -12,8 +12,12 @@ public sealed class QolDbContext(DbContextOptions<QolDbContext> options) : DbCon
     public DbSet<AudioFile> AudioFiles => Set<AudioFile>();
     public DbSet<Favorite> Favorites => Set<Favorite>();
     public DbSet<ListeningHistory> ListeningHistory => Set<ListeningHistory>();
+    public DbSet<VisitorSession> VisitorSessions => Set<VisitorSession>();
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<SubscriptionOrder> SubscriptionOrders => Set<SubscriptionOrder>();
+    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<LocationTranslation> LocationTranslations => Set<LocationTranslation>();
+    public DbSet<ActionLog> ActionLogs => Set<ActionLog>();
     public DbSet<LocationReview> LocationReviews => Set<LocationReview>();
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
 

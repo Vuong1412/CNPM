@@ -6,7 +6,8 @@
     "user-web"
   ],
   "scripts": {
-    "build": "npm run build --workspace @qol/user-web"
+    "build:shared": "tsc -b shared --force",
+    "build": "npm run build:shared && npm run build --workspace @qol/user-web"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

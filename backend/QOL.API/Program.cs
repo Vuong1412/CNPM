@@ -5,11 +5,19 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using QOL.API.Endpoints;
 using QOL.API.HealthChecks;
 using QOL.API.SeedData;
+using QOL.Application.Audio;
+using QOL.Application.Commerce;
+using QOL.Application.Payments;
 using QOL.Domain.Entities;
+using QOL.Infrastructure.Notifications;
+using QOL.Infrastructure.Payments;
+using QOL.Infrastructure.Audio;
 using QOL.Infrastructure.Persistence;
+using QOL.Infrastructure.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +36,33 @@ var locationImageDirectory = builder.Configuration["Storage:LocationImageDirecto
     ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "location-images");
 Directory.CreateDirectory(locationImageDirectory);
 builder.Services.AddQolInfrastructure();
+builder.Services.AddSingleton<IFileStorage>(new LocalFileStorage(audioDirectory));
+builder.Services.Configure<VnPayOptions>(builder.Configuration.GetSection("VnPay"));
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.Configure<AzureSpeechOptions>(builder.Configuration.GetSection("AzureSpeech"));
+if (builder.Configuration.GetValue<bool>("VnPay:Enabled"))
+{
+    if (string.IsNullOrWhiteSpace(builder.Configuration["VnPay:TmnCode"]) ||
+        string.IsNullOrWhiteSpace(builder.Configuration["VnPay:HashSecret"]))
+    {
+        throw new InvalidOperationException("VNPay is enabled but its credentials are not configured.");
+    }
+
+    builder.Services.RemoveAll<IPaymentGateway>();
+    builder.Services.AddScoped<IPaymentGateway, VnPayGateway>();
+}
+if (!string.IsNullOrWhiteSpace(builder.Configuration["AzureSpeech:Endpoint"]) &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["AzureSpeech:SubscriptionKey"]))
+{
+    builder.Services.RemoveAll<ITextToSpeechProvider>();
+    builder.Services.AddHttpClient<ITextToSpeechProvider, AzureSpeechTtsProvider>();
+}
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Email:Host"]) &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["Email:From"]))
+{
+    builder.Services.RemoveAll<IEmailProvider>();
+    builder.Services.AddScoped<IEmailProvider, SmtpEmailProvider>();
+}
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database");
@@ -148,8 +183,20 @@ app.Use(async (context, next) =>
          context.Request.Method == "PATCH" ||
          context.Request.Method == "DELETE"))
     {
-        var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
-        await antiforgery.ValidateRequestAsync(context);
+        try
+        {
+            var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
+            await antiforgery.ValidateRequestAsync(context);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            await Results.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid security token",
+                detail: "The request security token expired or belonged to another session. Refresh the page and try again.")
+                .ExecuteAsync(context);
+            return;
+        }
     }
 
     await next();
@@ -160,10 +207,12 @@ app.MapGet("/", () => TypedResults.Ok(new { name = "QOL API", status = "ready" }
 
 app.MapAuthEndpoints();
 app.MapLocationEndpoints(locationImageDirectory);
-app.MapAudioEndpoints(audioDirectory);
+app.MapAudioEndpoints();
+app.MapTranslationEndpoints();
 app.MapUserActivityEndpoints();
 app.MapCommerceEndpoints();
 app.MapReviewEndpoints();
+app.MapVisitorEndpoints();
 
 app.MapGet("/api/languages", async (QolDbContext db, CancellationToken cancellationToken) =>
     await db.Languages

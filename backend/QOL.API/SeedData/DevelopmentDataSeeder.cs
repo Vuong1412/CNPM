@@ -59,6 +59,19 @@ public static class DevelopmentDataSeeder
         string audioDirectory,
         CancellationToken cancellationToken = default)
     {
+        var demoPlanExists = await dbContext.SubscriptionPlans.AnyAsync(
+            plan => plan.Name == "Gói Khám Phá",
+            cancellationToken);
+        if (!demoPlanExists)
+        {
+            dbContext.SubscriptionPlans.Add(new SubscriptionPlan(
+                "Gói Khám Phá",
+                "Nghe thuyết minh tại các địa điểm trong 30 ngày.",
+                299000m,
+                "VND",
+                30));
+        }
+
         foreach (var sample in SampleLocations)
         {
             var existingLocation = await dbContext.Locations.SingleOrDefaultAsync(

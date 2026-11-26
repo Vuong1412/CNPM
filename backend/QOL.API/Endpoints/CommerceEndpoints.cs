@@ -4,6 +4,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QOL.Application.Commerce;
+using QOL.Application.Payments;
 using QOL.Application.Subscriptions;
 using QOL.Domain.Entities;
 using QOL.Infrastructure.Persistence;
@@ -189,6 +191,102 @@ public static class CommerceEndpoints
         .Produces(StatusCodes.Status404NotFound)
         .ProducesValidationProblem();
 
+        myOrders.MapPost("/{orderId:guid}/pay", async Task<IResult> (
+            Guid orderId,
+            ClaimsPrincipal principal,
+            HttpContext httpContext,
+            IConfiguration configuration,
+            QolDbContext db,
+            IPaymentGateway paymentGateway,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryGetUserId(principal, out var userId))
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            var order = await db.SubscriptionOrders.SingleOrDefaultAsync(
+                item => item.Id == orderId && item.UserId == userId,
+                cancellationToken);
+            if (order is null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            if (order.Status != SubscriptionOrderStatus.Pending)
+            {
+                return TypedResults.Conflict(new ProblemDetails
+                {
+                    Status = StatusCodes.Status409Conflict,
+                    Title = "Order is not pending",
+                    Detail = "Only pending orders can be paid."
+                });
+            }
+
+            if (order.Amount <= 0 ||
+                !string.Equals(order.Currency, "VND", StringComparison.OrdinalIgnoreCase))
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [nameof(order.Amount)] = ["Online VNPay payments require a positive amount in VND."]
+                });
+            }
+
+            var transactionReference = Guid.NewGuid().ToString("N");
+            var payment = new Payment(
+                order.Id,
+                paymentGateway.Provider,
+                transactionReference,
+                order.Amount,
+                order.Currency);
+            var returnUrl = configuration["VnPay:ReturnUrl"];
+            var ipnUrl = configuration["VnPay:IpnUrl"];
+            var origin = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
+            if (string.IsNullOrWhiteSpace(returnUrl))
+            {
+                returnUrl = $"{origin}/payment/result";
+            }
+            if (string.IsNullOrWhiteSpace(ipnUrl))
+            {
+                ipnUrl = $"{origin}/api/payments/vnpay/ipn";
+            }
+
+            returnUrl = AddQueryParameter(returnUrl, "orderId", order.Id.ToString("D"));
+            string paymentUrl;
+            try
+            {
+                paymentUrl = await paymentGateway.CreatePaymentUrlAsync(
+                    new PaymentLinkRequest(
+                        payment.Id,
+                        order.Id,
+                        payment.ProviderTxnId,
+                        order.Amount,
+                        order.Currency,
+                        returnUrl,
+                        ipnUrl,
+                        httpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1"),
+                    cancellationToken);
+            }
+            catch (InvalidOperationException exception)
+            {
+                return TypedResults.Problem(
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "Online payment is unavailable",
+                    detail: exception.Message);
+            }
+
+            db.Payments.Add(payment);
+            await db.SaveChangesAsync(cancellationToken);
+            return TypedResults.Ok(new PaymentLinkResponse(payment.Id, paymentUrl));
+        })
+        .WithName("CreateOrderPaymentLink")
+        .WithSummary("Create a VNPay payment link for the signed-in user's pending order")
+        .Produces<PaymentLinkResponse>()
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict)
+        .Produces(StatusCodes.Status503ServiceUnavailable)
+        .ProducesValidationProblem();
+
         var adminOrders = app.MapGroup("/api/admin/orders")
             .WithTags("Administration", "Orders")
             .RequireRateLimiting("sensitive-write")
@@ -223,6 +321,7 @@ public static class CommerceEndpoints
             ReviewSubscriptionOrderRequest request,
             ClaimsPrincipal principal,
             QolDbContext db,
+            IOrderFulfillmentService orderFulfillment,
             CancellationToken cancellationToken) =>
         {
             if (!TryGetUserId(principal, out var adminUserId))
@@ -239,34 +338,46 @@ public static class CommerceEndpoints
                 });
             }
 
-            var order = await db.SubscriptionOrders
-                .Include(item => item.Plan)
-                .SingleOrDefaultAsync(item => item.Id == orderId, cancellationToken);
-            if (order is null)
+            if (status == SubscriptionOrderStatus.Verified)
+            {
+                var fulfillment = await orderFulfillment.VerifyAsync(
+                    orderId,
+                    adminUserId,
+                    request.Note,
+                    cancellationToken);
+                if (fulfillment == OrderFulfillmentResult.NotFound)
+                {
+                    return TypedResults.NotFound();
+                }
+
+                if (fulfillment == OrderFulfillmentResult.Rejected)
+                {
+                    return TypedResults.Conflict(new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Order was rejected",
+                        Detail = "A rejected order cannot be verified."
+                    });
+                }
+
+                var verifiedOrder = await db.SubscriptionOrders
+                    .AsNoTracking()
+                    .SingleAsync(item => item.Id == orderId, cancellationToken);
+                return TypedResults.Ok(ToOrderResponse(verifiedOrder));
+            }
+
+            var rejectedOrder = await db.SubscriptionOrders.SingleOrDefaultAsync(
+                item => item.Id == orderId,
+                cancellationToken);
+            if (rejectedOrder is null)
             {
                 return TypedResults.NotFound();
             }
 
             try
             {
-                order.Review(status, adminUserId, request.Note);
-                if (status == SubscriptionOrderStatus.Verified)
-                {
-                    var subscriptionExists = await db.UserSubscriptions.AnyAsync(
-                        item => item.OrderId == order.Id,
-                        cancellationToken);
-                    if (!subscriptionExists)
-                    {
-                        db.UserSubscriptions.Add(new UserSubscription(
-                            order.UserId,
-                            order.PlanId,
-                            order.Id,
-                            order.PlanName,
-                            order.Currency,
-                            order.Amount,
-                            order.Plan.DurationDays));
-                    }
-                }
+                rejectedOrder.Review(status, adminUserId, request.Note);
+                await db.SaveChangesAsync(cancellationToken);
             }
             catch (InvalidOperationException exception)
             {
@@ -278,8 +389,7 @@ public static class CommerceEndpoints
                 });
             }
 
-            await db.SaveChangesAsync(cancellationToken);
-            return TypedResults.Ok(ToOrderResponse(order));
+            return TypedResults.Ok(ToOrderResponse(rejectedOrder));
         })
         .WithName("ReviewSubscriptionOrder")
         .WithSummary("Manually verify or reject a pending order")
@@ -316,6 +426,86 @@ public static class CommerceEndpoints
         .WithTags("Subscriptions")
         .WithName("GetMySubscriptions")
         .Produces<UserSubscriptionResponse[]>();
+
+        app.MapGet("/api/payments/vnpay/ipn", async Task<IResult> (
+            HttpContext httpContext,
+            IPaymentGateway paymentGateway,
+            IOrderFulfillmentService orderFulfillment,
+            QolDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var fields = httpContext.Request.Query.ToDictionary(
+                item => item.Key,
+                item => (string?)item.Value.ToString(),
+                StringComparer.Ordinal);
+            var notification = paymentGateway.VerifyNotification(fields);
+            if (!notification.SignatureValid)
+            {
+                return TypedResults.Ok(new VnPayIpnResponse("97", "Invalid signature"));
+            }
+
+            if (string.IsNullOrWhiteSpace(notification.ProviderTransactionId) ||
+                notification.AmountMinorUnits is null)
+            {
+                return TypedResults.Ok(new VnPayIpnResponse("99", "Invalid notification"));
+            }
+
+            var payment = await db.Payments
+                .Include(item => item.Order)
+                .SingleOrDefaultAsync(
+                    item => item.Provider == paymentGateway.Provider &&
+                        item.ProviderTxnId == notification.ProviderTransactionId,
+                    cancellationToken);
+            if (payment is null)
+            {
+                return TypedResults.Ok(new VnPayIpnResponse("01", "Payment not found"));
+            }
+
+            var expectedMinorUnits = checked((long)decimal.Round(
+                payment.Amount * 100,
+                0,
+                MidpointRounding.AwayFromZero));
+            if (notification.AmountMinorUnits != expectedMinorUnits ||
+                !string.Equals(notification.Currency, payment.Currency, StringComparison.OrdinalIgnoreCase))
+            {
+                if (payment.MarkFailed())
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+
+                return TypedResults.Ok(new VnPayIpnResponse("04", "Amount or currency mismatch"));
+            }
+
+            if (notification.ResponseCode != "00" || notification.TransactionStatus != "00")
+            {
+                if (payment.MarkFailed())
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+
+                return TypedResults.Ok(new VnPayIpnResponse("00", "Payment result recorded"));
+            }
+
+            if (payment.MarkPaid())
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            var result = await orderFulfillment.VerifyAsync(
+                payment.OrderId,
+                reviewerUserId: null,
+                note: $"VNPay transaction {notification.ProviderReference ?? notification.ProviderTransactionId}",
+                cancellationToken);
+            return result is OrderFulfillmentResult.Fulfilled or OrderFulfillmentResult.AlreadyFulfilled
+                ? TypedResults.Ok(new VnPayIpnResponse("00", "Payment confirmed"))
+                : TypedResults.Ok(new VnPayIpnResponse("04", "Order cannot be fulfilled"));
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("sensitive-write")
+        .WithTags("Payments")
+        .WithName("VnPayIpn")
+        .WithSummary("Verify a signed VNPay payment notification")
+        .Produces<VnPayIpnResponse>();
 
         app.MapGet("/api/admin/dashboard", async (
             QolDbContext db,
@@ -365,6 +555,15 @@ public static class CommerceEndpoints
             order.CreatedAt,
             order.ReviewedAt,
             order.ReviewNote);
+
+    private static string AddQueryParameter(string uri, string key, string value)
+    {
+        var builder = new UriBuilder(uri);
+        var query = builder.Query.TrimStart('?');
+        var encoded = $"{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
+        builder.Query = string.IsNullOrEmpty(query) ? encoded : $"{query}&{encoded}";
+        return builder.Uri.ToString();
+    }
 }
 
 public sealed record SubscriptionPlanRequest
@@ -449,3 +648,7 @@ public sealed record AdminDashboardResponse(
     int ActiveAudioCount,
     int ActivePlanCount,
     int PendingOrderCount);
+
+public sealed record PaymentLinkResponse(Guid PaymentId, string PaymentUrl);
+
+public sealed record VnPayIpnResponse(string RspCode, string Message);
