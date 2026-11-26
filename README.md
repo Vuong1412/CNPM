@@ -1,5 +1,7 @@
 # QOL
 
+FE DEV (react native + React.js) chuyên nghiệp
+
 Monorepo cho QOL — ứng dụng hướng dẫn tham quan bằng âm thanh đa ngôn ngữ. Nền tảng hiện được tổ chức cho React + TypeScript, ASP.NET Core và Microsoft SQL Server.
 
 ## Chạy từ đầu (Development)
