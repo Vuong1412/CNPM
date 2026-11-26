@@ -19,7 +19,8 @@ export function OrdersPage() {
   const [orders, setOrders] = useState<SubscriptionOrder[]>([]);
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
+  const [qrOrderId, setQrOrderId] = useState<string | null>(null);
+  const [claimingOrderId, setClaimingOrderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,24 +52,29 @@ export function OrdersPage() {
     return () => controller.abort();
   }, [isAuthLoading, t, user]);
 
-  async function payForOrder(orderId: string) {
-    setPayingOrderId(orderId);
+  async function reportQrPayment(orderId: string) {
+    setClaimingOrderId(orderId);
     setError(null);
     try {
-      const payment = await apiClient.post<{ paymentId: string; paymentUrl: string }>(
-        `me/orders/${encodeURIComponent(orderId)}/pay`,
+      const claim = await apiClient.post<{ reportedAt: string }>(
+        `me/orders/${encodeURIComponent(orderId)}/qr-payment-claim`,
         {}
       );
-      window.location.assign(payment.paymentUrl);
+      setOrders((current) => current.map((order) => order.id === orderId
+        ? { ...order, manualQrReportedAt: claim.reportedAt }
+        : order));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("orders.paymentError"));
-      setPayingOrderId(null);
+      setError(cause instanceof Error ? cause.message : t("orders.qrClaimError"));
+    } finally {
+      setClaimingOrderId(null);
     }
   }
 
   if (isAuthLoading || (user && isLoading)) {
     return <section className="content-page"><p role="status">{t("common.loading")}</p></section>;
   }
+
+  const qrOrder = orders.find((order) => order.id === qrOrderId) ?? null;
 
   return (
     <section className="content-page commerce-page">
@@ -129,20 +135,78 @@ export function OrdersPage() {
                     <p className="form-hint">{t("orders.pendingNotice")}</p>
                     <button
                       className="button-primary"
-                      disabled={payingOrderId !== null}
-                      onClick={() => void payForOrder(order.id)}
+                      onClick={() => {
+                        setError(null);
+                        setQrOrderId(order.id);
+                      }}
                       type="button"
                     >
-                      {payingOrderId === order.id
-                        ? t("auth.working")
-                        : t("orders.payWithVnPay")}
+                      {t("orders.payWithQr")}
                     </button>
                   </>
+                )}
+                {order.manualQrReportedAt && (
+                  <p className="qr-payment-confirmation" role="status">
+                    {t("orders.qrClaimedAt", {
+                      date: new Date(order.manualQrReportedAt).toLocaleString()
+                    })}
+                  </p>
                 )}
                 {order.reviewNote && <p>{t("orders.reviewNote", { note: order.reviewNote })}</p>}
               </article>
             ))}
           </div>
+          {qrOrder && (
+            <div className="qr-payment-overlay">
+              <section
+                aria-labelledby="qr-payment-title"
+                aria-modal="true"
+                className="qr-payment-dialog"
+                role="dialog"
+              >
+                <div className="qr-payment-heading">
+                  <h2 id="qr-payment-title">{t("orders.qrTitle")}</h2>
+                  <button
+                    aria-label={t("orders.qrClose")}
+                    className="button-secondary"
+                    onClick={() => setQrOrderId(null)}
+                    type="button"
+                  >
+                    {t("orders.qrClose")}
+                  </button>
+                </div>
+                <img
+                  alt={t("orders.qrImageAlt")}
+                  className="qr-payment-image"
+                  src="/payment-qr.jpg"
+                />
+                <p>
+                  {t("orders.qrInstructions", {
+                    amount: formatPrice(qrOrder.amount, qrOrder.currency),
+                    id: qrOrder.id
+                  })}
+                </p>
+                {qrOrder.manualQrReportedAt ? (
+                  <p className="qr-payment-confirmation" role="status">
+                    {t("orders.qrClaimedAt", {
+                      date: new Date(qrOrder.manualQrReportedAt).toLocaleString()
+                    })}
+                  </p>
+                ) : (
+                  <button
+                    className="button-primary"
+                    disabled={claimingOrderId === qrOrder.id}
+                    onClick={() => void reportQrPayment(qrOrder.id)}
+                    type="button"
+                  >
+                    {claimingOrderId === qrOrder.id
+                      ? t("auth.working")
+                      : t("orders.qrReportPaid")}
+                  </button>
+                )}
+              </section>
+            </div>
+          )}
         </>
       )}
     </section>

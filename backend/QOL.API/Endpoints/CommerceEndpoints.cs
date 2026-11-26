@@ -14,6 +14,8 @@ namespace QOL.API.Endpoints;
 
 public static class CommerceEndpoints
 {
+    private const string ManualQrPaymentProvider = "ManualQR";
+
     public static void MapCommerceEndpoints(this WebApplication app)
     {
         app.MapGet("/api/plans", async (
@@ -138,11 +140,98 @@ public static class CommerceEndpoints
                 .AsNoTracking()
                 .Where(order => order.UserId == userId)
                 .OrderByDescending(order => order.CreatedAt)
+                .Select(order => new
+                {
+                    Order = order,
+                    ManualQrReportedAt = db.Payments
+                        .Where(payment => payment.OrderId == order.Id &&
+                            payment.Provider == ManualQrPaymentProvider)
+                        .Select(payment => (DateTimeOffset?)payment.CreatedAt)
+                        .FirstOrDefault()
+                })
                 .ToArrayAsync(cancellationToken);
-            return TypedResults.Ok(orders.Select(ToOrderResponse).ToArray());
+            return TypedResults.Ok(orders
+                .Select(item => ToOrderResponse(item.Order, item.ManualQrReportedAt))
+                .ToArray());
         })
         .WithName("GetMySubscriptionOrders")
         .Produces<SubscriptionOrderResponse[]>();
+
+        myOrders.MapPost("/{orderId:guid}/qr-payment-claim", async Task<IResult> (
+            Guid orderId,
+            ClaimsPrincipal principal,
+            QolDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryGetUserId(principal, out var userId))
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            var order = await db.SubscriptionOrders.SingleOrDefaultAsync(
+                item => item.Id == orderId && item.UserId == userId,
+                cancellationToken);
+            if (order is null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            if (order.Status != SubscriptionOrderStatus.Pending)
+            {
+                return TypedResults.Conflict(new ProblemDetails
+                {
+                    Status = StatusCodes.Status409Conflict,
+                    Title = "Order is not pending",
+                    Detail = "Only pending orders can be reported as paid."
+                });
+            }
+
+            var existingClaim = await db.Payments
+                .AsNoTracking()
+                .Where(payment => payment.OrderId == orderId &&
+                    payment.Provider == ManualQrPaymentProvider)
+                .Select(payment => (DateTimeOffset?)payment.CreatedAt)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (existingClaim.HasValue)
+            {
+                return TypedResults.Ok(new QrPaymentClaimResponse(existingClaim.Value));
+            }
+
+            var claim = new Payment(
+                order.Id,
+                ManualQrPaymentProvider,
+                $"QR-CLAIM-{order.Id:N}",
+                order.Amount,
+                order.Currency);
+            db.Payments.Add(claim);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                db.Entry(claim).State = EntityState.Detached;
+                var concurrentClaim = await db.Payments
+                    .AsNoTracking()
+                    .Where(payment => payment.OrderId == orderId &&
+                        payment.Provider == ManualQrPaymentProvider)
+                    .Select(payment => (DateTimeOffset?)payment.CreatedAt)
+                    .SingleOrDefaultAsync(cancellationToken);
+                if (!concurrentClaim.HasValue)
+                {
+                    throw;
+                }
+
+                return TypedResults.Ok(new QrPaymentClaimResponse(concurrentClaim.Value));
+            }
+
+            return TypedResults.Ok(new QrPaymentClaimResponse(claim.CreatedAt));
+        })
+        .WithName("ReportQrPayment")
+        .WithSummary("Record a user's manual QR payment claim without verifying the order")
+        .Produces<QrPaymentClaimResponse>()
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
 
         myOrders.MapPost("/", async Task<IResult> (
             CreateSubscriptionOrderRequest request,
@@ -300,16 +389,26 @@ public static class CommerceEndpoints
                 .AsNoTracking()
                 .OrderBy(order => order.Status)
                 .ThenByDescending(order => order.CreatedAt)
-                .Select(order => new AdminSubscriptionOrderResponse(
-                    order.Id,
-                    order.User.Email,
-                    order.PlanName,
-                    order.Amount,
-                    order.Currency,
-                    order.Status.ToString(),
-                    order.CreatedAt,
-                    order.ReviewedAt,
-                    order.ReviewNote))
+                .Select(order => new
+                {
+                    Order = order,
+                    ManualQrReportedAt = db.Payments
+                        .Where(payment => payment.OrderId == order.Id &&
+                            payment.Provider == ManualQrPaymentProvider)
+                        .Select(payment => (DateTimeOffset?)payment.CreatedAt)
+                        .FirstOrDefault()
+                })
+                .Select(item => new AdminSubscriptionOrderResponse(
+                    item.Order.Id,
+                    item.Order.User.Email,
+                    item.Order.PlanName,
+                    item.Order.Amount,
+                    item.Order.Currency,
+                    item.Order.Status.ToString(),
+                    item.Order.CreatedAt,
+                    item.Order.ReviewedAt,
+                    item.Order.ReviewNote,
+                    item.ManualQrReportedAt))
                 .ToArrayAsync(cancellationToken);
             return TypedResults.Ok(orders);
         })
@@ -544,7 +643,9 @@ public static class CommerceEndpoints
             plan.DurationDays,
             plan.IsActive);
 
-    private static SubscriptionOrderResponse ToOrderResponse(SubscriptionOrder order) =>
+    private static SubscriptionOrderResponse ToOrderResponse(
+        SubscriptionOrder order,
+        DateTimeOffset? manualQrReportedAt = null) =>
         new(
             order.Id,
             order.PlanId,
@@ -554,7 +655,8 @@ public static class CommerceEndpoints
             order.Status.ToString(),
             order.CreatedAt,
             order.ReviewedAt,
-            order.ReviewNote);
+            order.ReviewNote,
+            manualQrReportedAt);
 
     private static string AddQueryParameter(string uri, string key, string value)
     {
@@ -622,7 +724,10 @@ public sealed record SubscriptionOrderResponse(
     string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ReviewedAt,
-    string? ReviewNote);
+    string? ReviewNote,
+    DateTimeOffset? ManualQrReportedAt = null);
+
+public sealed record QrPaymentClaimResponse(DateTimeOffset ReportedAt);
 
 public sealed record AdminSubscriptionOrderResponse(
     Guid Id,
@@ -633,7 +738,8 @@ public sealed record AdminSubscriptionOrderResponse(
     string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ReviewedAt,
-    string? ReviewNote);
+    string? ReviewNote,
+    DateTimeOffset? ManualQrReportedAt);
 
 public sealed record UserSubscriptionResponse(
     Guid Id,

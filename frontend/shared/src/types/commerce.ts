@@ -18,6 +18,7 @@ export interface SubscriptionOrder {
   createdAt: string;
   reviewedAt: string | null;
   reviewNote: string | null;
+  manualQrReportedAt: string | null;
 }
 
 export interface UserSubscription {

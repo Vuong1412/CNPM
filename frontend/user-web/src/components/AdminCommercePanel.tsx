@@ -325,6 +325,13 @@ export function AdminCommercePanel() {
                   {order.userEmail} · {formatPrice(order.amount, order.currency)} · {new Date(order.createdAt).toLocaleString()}
                 </span>
                 <small>{t("orders.reference", { id: order.id })}</small>
+                {order.manualQrReportedAt && (
+                  <small>
+                    {t("admin.qrPaymentReportedAt", {
+                      date: new Date(order.manualQrReportedAt).toLocaleString()
+                    })}
+                  </small>
+                )}
                 {order.reviewNote && <small>{t("orders.reviewNote", { note: order.reviewNote })}</small>}
               </div>
               {order.status === "Pending" && (

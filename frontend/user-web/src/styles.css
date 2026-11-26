@@ -2454,6 +2454,61 @@ main {
   text-align: center;
 }
 
+.qr-payment-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 27, 21, 0.58);
+}
+
+.qr-payment-dialog {
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 540px);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.22);
+}
+
+.qr-payment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.qr-payment-heading h2,
+.qr-payment-dialog p {
+  margin: 0;
+}
+
+.qr-payment-dialog p {
+  line-height: 1.6;
+}
+
+.qr-payment-image {
+  width: min(100%, 320px);
+  justify-self: center;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.qr-payment-confirmation {
+  padding: 0.85rem;
+  border-radius: 0.75rem;
+  background: var(--mint);
+  color: var(--green-dark);
+}
+
 .admin-heading-actions {
   display: flex;
   align-items: center;

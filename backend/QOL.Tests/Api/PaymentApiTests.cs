@@ -132,6 +132,91 @@ public sealed class PaymentApiTests
         Assert.Equal(HttpStatusCode.NotFound, forbiddenOrder.StatusCode);
     }
 
+    [Fact]
+    public async Task QrPaymentClaimIsIdempotentAndDoesNotVerifyTheOrder()
+    {
+        using var factory = new PaymentTestFactory();
+        using var client = CreateCookieClient(factory);
+        var fixture = await SeedOrderAsync(factory, client);
+
+        var firstResponse = await PostWithAntiforgeryAsync(
+            client,
+            $"/api/me/orders/{fixture.Order.Id}/qr-payment-claim",
+            new { });
+        var retryResponse = await PostWithAntiforgeryAsync(
+            client,
+            $"/api/me/orders/{fixture.Order.Id}/qr-payment-claim",
+            new { });
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
+        var firstClaim = await firstResponse.Content.ReadFromJsonAsync<QrPaymentClaimResponse>();
+        var retryClaim = await retryResponse.Content.ReadFromJsonAsync<QrPaymentClaimResponse>();
+        Assert.NotNull(firstClaim);
+        Assert.NotNull(retryClaim);
+        Assert.Equal(firstClaim.ReportedAt, retryClaim.ReportedAt);
+
+        var orders = await client.GetAsync("/api/me/orders/");
+        Assert.Equal(HttpStatusCode.OK, orders.StatusCode);
+        using var ordersPayload = JsonDocument.Parse(await orders.Content.ReadAsStringAsync());
+        var reportedAt = DateTimeOffset.Parse(
+            ordersPayload.RootElement[0].GetProperty("manualQrReportedAt").GetString()!);
+        Assert.Equal(firstClaim.ReportedAt, reportedAt);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+        var payment = await db.Payments.SingleAsync();
+        Assert.Equal("ManualQR", payment.Provider);
+        Assert.Equal(PaymentStatus.Pending, payment.Status);
+        Assert.Equal(SubscriptionOrderStatus.Pending, (await db.SubscriptionOrders.SingleAsync()).Status);
+        Assert.Empty(await db.UserSubscriptions.ToArrayAsync());
+
+        using var adminClient = CreateCookieClient(factory);
+        var admin = new User("qr-admin@example.com", "QR Admin");
+        admin.AssignAdministratorRole();
+        await using (var adminScope = factory.Services.CreateAsyncScope())
+        {
+            var adminDb = adminScope.ServiceProvider.GetRequiredService<QolDbContext>();
+            var hasher = adminScope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
+            admin.SetPasswordHash(hasher.HashPassword(admin, "TestPassword!2026"));
+            adminDb.Users.Add(admin);
+            await adminDb.SaveChangesAsync();
+        }
+
+        await SignInAsync(adminClient, "qr-admin@example.com");
+        using var adminOrdersPayload = JsonDocument.Parse(
+            await (await adminClient.GetAsync("/api/admin/orders/")).Content.ReadAsStringAsync());
+        var adminReportedAt = DateTimeOffset.Parse(
+            adminOrdersPayload.RootElement[0].GetProperty("manualQrReportedAt").GetString()!);
+        Assert.Equal(firstClaim.ReportedAt, adminReportedAt);
+    }
+
+    [Fact]
+    public async Task QrPaymentClaimCannotBeSubmittedForAnotherUsersOrder()
+    {
+        using var factory = new PaymentTestFactory();
+        using var client = CreateCookieClient(factory);
+        var fixture = await SeedOrderAsync(factory, client);
+        using var otherClient = CreateCookieClient(factory);
+        var otherUser = new User("other-qr@example.com", "Other QR User");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<QolDbContext>();
+            var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
+            otherUser.SetPasswordHash(hasher.HashPassword(otherUser, "TestPassword!2026"));
+            db.Users.Add(otherUser);
+            await db.SaveChangesAsync();
+        }
+
+        await SignInAsync(otherClient, "other-qr@example.com");
+        var response = await PostWithAntiforgeryAsync(
+            otherClient,
+            $"/api/me/orders/{fixture.Order.Id}/qr-payment-claim",
+            new { });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private static WebApplicationFactoryClientOptions CookieOptions() => new()
     {
         HandleCookies = true,
@@ -311,6 +396,7 @@ public sealed class PaymentApiTests
 
     private sealed record PaymentLinkResponse(Guid PaymentId, string PaymentUrl);
     private sealed record PaymentReference(Guid Id, string ProviderTxnId);
+    private sealed record QrPaymentClaimResponse(DateTimeOffset ReportedAt);
 
     private sealed class PaymentTestFactory : WebApplicationFactory<Program>
     {
